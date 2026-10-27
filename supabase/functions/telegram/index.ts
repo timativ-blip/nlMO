@@ -19,6 +19,13 @@ async function secret(key: string) {
   }
   return secrets[key] ?? '';
 }
+// Имя для обращения при любом порядке «Фамилия Имя» / «Имя Фамилия» (как src/lib/names.ts)
+const SURNAME = /(ов|ев|ёв|ин|ын|ский|цкий|ской|цкой|ой|ая|ова|ева|ёва|ина|ына|ская|цкая|ко|ук|юк|чук|енко|ых|их|ман|ер|дзе|швили|ян)$/i;
+function firstName(full: string) {
+  const [a = '', b = ''] = full.trim().split(/\s+/);
+  if (!b) return a;
+  return SURNAME.test(a) && !SURNAME.test(b) ? b : a;
+}
 async function tg(method: string, payload: unknown) {
   const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   return r.json();
@@ -38,7 +45,7 @@ async function onUpdate(update: { message?: { chat: { id: number }; text?: strin
     await admin.from('telegram_links').upsert({ user_id: code.user_id, chat_id: chatId, linked_at: new Date().toISOString() });
     await admin.from('telegram_link_codes').delete().eq('user_id', code.user_id);
     const { data: p } = await admin.from('profiles').select('data').eq('id', code.user_id).single();
-    await tg('sendMessage', { chat_id: chatId, text: `Готово, ${p?.data?.name?.split(' ')[0] ?? 'коллега'}! Сюда будут приходить уведомления: назначения, сроки, комментарии, проверка результатов и изменения мероприятий.\n\nОтключить — /stop` });
+    await tg('sendMessage', { chat_id: chatId, text: `Готово, ${p?.data?.name ? firstName(p.data.name) : 'коллега'}! Сюда будут приходить уведомления: назначения, сроки, комментарии, проверка результатов и изменения мероприятий.\n\nОтключить — /stop` });
   } else if (cmd === '/stop') {
     await admin.from('telegram_links').delete().eq('chat_id', chatId);
     await tg('sendMessage', { chat_id: chatId, text: 'Уведомления отключены. Подключить снова можно в профиле Командного центра.' });
