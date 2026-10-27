@@ -120,6 +120,11 @@ async function callFn<T>(name: string, body: unknown): Promise<T> {
 export const fnCreateUser = (profile: Partial<User>) => callFn<{ id: string; profile: User; password: string }>('team-admin', { action: 'create_user', profile });
 export const fnResetPassword = (userId: string) => callFn<{ password: string }>('team-admin', { action: 'reset_password', userId });
 export const fnBootstrap = (profile: Partial<User>, password: string) => callFn<{ ok: true }>('team-admin', { action: 'bootstrap', profile, password });
+export const fnRegister = (profile: Partial<User>, kind: 'hq' | 'okrug', password: string) => callFn<{ ok: true }>('team-admin', { action: 'register', profile, kind, password });
+export async function myStatus(): Promise<{ exists: boolean; active?: boolean; pending?: boolean; name?: string }> {
+  const { data } = await sb!.rpc('my_status');
+  return (data as { exists: boolean }) ?? { exists: false };
+}
 export const fnSetupBot = (appUrl: string) => callFn<{ username: string }>('telegram', { action: 'setup', appUrl });
 
 export async function createTelegramCode(uid: string) {

@@ -29,6 +29,7 @@ export interface User {
   birthday?: string; // YYYY-MM-DD
   birthdayVisibility: BirthdayVisibility;
   active: boolean;
+  pending?: boolean; // заявка после самостоятельной регистрации ждёт одобрения
 }
 
 export interface District {

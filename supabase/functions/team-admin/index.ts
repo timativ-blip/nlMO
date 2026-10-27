@@ -18,7 +18,7 @@ function genPassword() {
 
 interface NewPerson { name?: string; email?: string; phone?: string; role?: string; title?: string; districtId?: string | null; position?: string; telegram?: string; birthday?: string }
 
-async function createPerson(p: NewPerson, password: string) {
+async function createPerson(p: NewPerson, password: string, extra: Record<string, unknown> = {}) {
   const email = (p.email ?? '').trim().toLowerCase();
   const name = (p.name ?? '').trim();
   if (name.split(/\s+/).length < 2) throw new Error('Укажите имя и фамилию.');
@@ -31,11 +31,11 @@ async function createPerson(p: NewPerson, password: string) {
   const id = data.user.id;
   const profile = {
     id, name, role: p.role, title: p.title || null, position: p.position ?? '', districtId: p.districtId ?? null, email, phone: p.phone ?? '',
-    telegram: p.telegram || undefined, birthday: p.birthday || undefined, birthdayVisibility: 'district', active: true,
+    telegram: p.telegram || undefined, birthday: p.birthday || undefined, birthdayVisibility: 'district', active: true, ...extra,
   };
   const { error: e2 } = await admin.from('profiles').insert({ id, data: profile });
   if (e2) { await admin.auth.admin.deleteUser(id); throw new Error(e2.message); }
-  if (p.role === 'coordinator' && p.districtId) {
+  if (p.role === 'coordinator' && p.districtId && extra.active !== false) {
     const { data: d } = await admin.from('districts').select('data').eq('id', p.districtId).single();
     if (d && !d.data.coordinatorId) await admin.from('districts').update({ data: { ...d.data, coordinatorId: id } }).eq('id', p.districtId);
   }
@@ -52,6 +52,30 @@ Deno.serve(async (req) => {
       if (!body.password || String(body.password).length < 8) return fail('Пароль — не короче 8 символов.');
       const r = await createPerson({ ...body.profile, role: 'head', title: 'head', districtId: null }, String(body.password));
       return json({ ok: true, id: r.id });
+    }
+
+    // Самостоятельная регистрация: учётная запись создаётся неактивной, до одобрения заявки
+    if (body.action === 'register') {
+      const { count } = await admin.from('profiles').select('id', { count: 'exact', head: true });
+      if (!count) return fail('Система ещё не настроена — сначала руководитель проходит «Первый запуск».');
+      const p: NewPerson = body.profile ?? {};
+      const kind = body.kind === 'hq' ? 'hq' : 'okrug';
+      if (!body.password || String(body.password).length < 8) return fail('Пароль — не короче 8 символов.');
+      let districtId: string | null = null;
+      if (kind === 'okrug') {
+        const { data: d } = await admin.from('districts').select('id').eq('id', String(p.districtId ?? '')).maybeSingle();
+        if (!d) return fail('Выберите свой округ.');
+        districtId = d.id;
+      }
+      const r = await createPerson({ name: p.name, email: p.email, phone: p.phone, position: p.position, role: kind === 'hq' ? 'staff' : 'member', title: kind === 'hq' ? 'staff' : 'member', districtId }, String(body.password), { active: false, pending: true });
+      const { data: all } = await admin.from('profiles').select('id, data');
+      const approvers = (all ?? []).filter((x) => x.data.active !== false && (x.data.role === 'head' || (kind === 'okrug' && x.data.role === 'coordinator' && x.data.districtId === districtId)));
+      const text = `Новая заявка на доступ: ${r.profile.name} — ${kind === 'hq' ? 'сотрудник штаба МО' : `участник округа ${districtId}`}`;
+      if (approvers.length) await admin.from('notifications').insert(approvers.map((x) => {
+        const nid = `reg_${r.id.slice(0, 8)}_${x.id.slice(0, 8)}`;
+        return { id: nid, user_id: x.id, data: { id: nid, userId: x.id, text, at: new Date().toISOString(), read: false, link: '#/team/requests', kind: 'assign' } };
+      }));
+      return json({ ok: true });
     }
 
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? '';

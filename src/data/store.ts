@@ -87,7 +87,7 @@ export const useAppState = () => useSyncExternalStore(subscribe, () => state);
 export const getState = () => state;
 
 /* ───────── Фаза приложения (рабочий режим): загрузка, вход, первый запуск ───────── */
-export type Phase = 'loading' | 'signed-out' | 'setup' | 'ready' | 'error';
+export type Phase = 'loading' | 'signed-out' | 'setup' | 'ready' | 'error' | 'pending';
 let phase: Phase = BACKEND ? 'loading' : 'ready';
 let phaseError = '';
 const phaseSubs = new Set<() => void>();
@@ -161,7 +161,12 @@ async function boot(uid: string) {
   state = { ...emptyState(), session: { userId: uid } };
   try {
     const me = await refresh();
-    if (!me) { setPhase('error', 'Учётная запись найдена, но профиль не создан или отключён. Обратитесь к руководителю области.'); return; }
+    if (!me) {
+      const st = await B.myStatus();
+      if (st.pending) { setPhase('pending', st.name ?? ''); return; }
+      setPhase('error', st.exists ? 'Ваша учётная запись отключена. Обратитесь к руководителю области или координатору округа.' : 'Учётная запись найдена, но профиль не создан. Обратитесь к руководителю области.');
+      return;
+    }
     if (me.active === false) { setPhase('error', 'Ваша учётная запись отключена. Обратитесь к руководителю области.'); return; }
     setPhase('ready');
     // Черновики недельных отчётов создаёт тот, у кого есть право (руководитель или координатор)
@@ -209,6 +214,14 @@ export async function signIn(email: string, password: string) {
   if (error) throw new AppError(/invalid/i.test(error.message) ? 'Неверная почта или пароль. Если забыли пароль — попросите руководителя или координатора сбросить его.' : B.humanError(error.message));
 }
 export const signOut = () => sb!.auth.signOut({ scope: 'local' });
+export async function register(profile: Partial<User>, kind: 'hq' | 'okrug', password: string) {
+  if (!profile.name || profile.name.trim().split(/\s+/).length < 2) throw new AppError('Укажите имя и фамилию.');
+  if (!profile.email || !/^\S+@\S+\.\S+$/.test(profile.email)) throw new AppError('Укажите почту — это ваш логин.');
+  if (kind === 'okrug' && !profile.districtId) throw new AppError('Выберите свой округ.');
+  if (password.length < 8) throw new AppError('Пароль — не короче 8 символов.');
+  await B.fnRegister(profile, kind, password);
+  await signIn(profile.email, password);
+}
 export async function bootstrapHead(profile: Partial<User>, password: string) {
   await B.fnBootstrap(profile, password);
   await signIn(profile.email!, password);
@@ -660,9 +673,12 @@ export async function resetPassword(userId: string) {
 }
 
 /** Роль, округ и активность — меняет руководитель области. */
-export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'title' | 'districtId' | 'active' | 'position'>>) {
+export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'title' | 'districtId' | 'active' | 'position' | 'pending'>>) {
   mutate((s, actor) => {
-    if (actor.role !== 'head') deny('Роль, округ и доступ меняет руководитель области.');
+    const target = s.users.find((x) => x.id === id)!;
+    if (!P.canManageUser(actor, target)) deny('Роль и доступ меняют руководство области, а для участников своего округа — координатор.');
+    if (actor.role !== 'head' && ((patch.role && patch.role !== 'member') || (patch.districtId !== undefined && patch.districtId !== target.districtId) || (patch.title && !['member', 'party_member'].includes(patch.title))))
+      deny('Координатор может сделать человека участником или членом партии своего округа. Другие роли назначает руководство области.');
     if (id === actor.id && (patch.role && patch.role !== 'head' || patch.active === false)) throw new AppError('Нельзя снять с себя роль руководителя или отключить себя — попросите другого руководителя.');
     const u = s.users.find((x) => x.id === id)!;
     Object.assign(u, patch);

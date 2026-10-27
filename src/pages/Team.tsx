@@ -11,21 +11,24 @@ import { openEvent, openNewEvent, openNewTask, openRecords } from '../ui/global'
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge, Tabs } from '../ui/kit';
 import { ContextBar, MoMap, TaskRow } from '../ui/widgets';
-import { AddPersonButton, PersonAdminCard } from './TeamAdmin';
+import { AddPersonButton, PersonAdminCard, Requests, usePendingRequests } from './TeamAdmin';
 
 export default function TeamPage({ route }: { route: Route }) {
   const [, sub, id] = route.parts;
   if (sub === 'people' && id) return <PersonPage id={id} />;
   if (sub === 'districts' && id) return <DistrictPage id={id} />;
-  const tab = sub === 'districts' ? 'districts' : 'people';
+  const tab = sub === 'districts' ? 'districts' : sub === 'requests' ? 'requests' : 'people';
+  const me = useMe();
+  const pending = usePendingRequests();
+  const canApprove = me.role === 'head' || me.role === 'coordinator';
   return (
     <>
       <div className="page-head">
         <div className="grow"><h1>Команда</h1><div className="sub">Люди и команды округов Московской области</div></div>
         <ContextBar showDistrict={false} />
       </div>
-      <Tabs value={tab} onChange={(v) => go(`/team/${v}`)} tabs={[{ value: 'people', label: 'Люди' }, { value: 'districts', label: 'Округа' }]} />
-      {tab === 'people' ? <People /> : <Districts />}
+      <Tabs value={tab} onChange={(v) => go(`/team/${v}`)} tabs={[{ value: 'people', label: 'Люди' }, { value: 'districts', label: 'Округа' }, ...(canApprove ? [{ value: 'requests', label: pending.length ? `Заявки · ${pending.length}` : 'Заявки' }] : [])]} />
+      {tab === 'people' ? <People /> : tab === 'requests' && canApprove ? <Requests /> : <Districts />}
     </>
   );
 }
@@ -37,7 +40,7 @@ function People() {
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
   const [district, setDistrict] = useState('');
-  const list = useMemo(() => s.users.filter((u) => (u.active || me.role === 'head') && (!q || `${u.name} ${u.position} ${u.email}`.toLowerCase().includes(q.toLowerCase())) && (!role || teamRoleOf(u) === role) && (!district || u.districtId === district)).sort((a, b) => ['head', 'staff', 'coordinator', 'member'].indexOf(a.role) - ['head', 'staff', 'coordinator', 'member'].indexOf(b.role) || a.name.localeCompare(b.name)), [s.users, q, role, district, me.role]);
+  const list = useMemo(() => s.users.filter((u) => !u.pending && (u.active || me.role === 'head') && (!q || `${u.name} ${u.position} ${u.email}`.toLowerCase().includes(q.toLowerCase())) && (!role || teamRoleOf(u) === role) && (!district || u.districtId === district)).sort((a, b) => ['head', 'staff', 'coordinator', 'member'].indexOf(a.role) - ['head', 'staff', 'coordinator', 'member'].indexOf(b.role) || a.name.localeCompare(b.name)), [s.users, q, role, district, me.role]);
   const active = (id: string) => s.tasks.filter((t) => t.assigneeId === id && ACTIVE(t));
   return (
     <>

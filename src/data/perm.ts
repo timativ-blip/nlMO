@@ -56,6 +56,9 @@ export function canEditReport(u: User, r: Report) {
 export const canReviewReport = (u: User, r: Report) => r.status === 'sent' && u.role === 'head';
 export const canEditWeights = (u: User) => u.role === 'head';
 export const canImport = (u: User) => u.role !== 'member';
+/** Роль и доступ: руководство — для всех; координатор — для участников своего округа (не для себя). */
+export const canManageUser = (actor: User, target: User) =>
+  actor.role === 'head' || (actor.role === 'coordinator' && actor.id !== target.id && target.role === 'member' && !!actor.districtId && target.districtId === actor.districtId);
 export const canEditUser = (actor: User, target: User) => actor.id === target.id || actor.role === 'head';
 
 export function canSeeBirthday(viewer: User, u: User) {

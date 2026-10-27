@@ -4,7 +4,7 @@ import { addDays, todayISO, weekStart, stamp } from '../lib/date';
 import { OKRUGS } from './okrugs';
 import type { CalEvent, District, Metric, Priority, Report, State, Task, TaskStatus, User } from './types';
 
-export const DATA_VERSION = 6;
+export const DATA_VERSION = 7;
 
 function rng(seed: number) {
   return () => {
@@ -109,6 +109,9 @@ export function createSeed(): State {
   users.find((u) => u.name === 'Дмитрий Орлов')!.title = 'deputy';
   users.find((u) => u.name === 'Павел Гришин')!.title = 'media';
   users.filter((u) => u.role === 'member').forEach((u, k) => { if (k % 3 === 1) u.title = 'party_member'; });
+  // Заявка после самостоятельной регистрации — видна во вкладке «Команда → Заявки»
+  const req = mkUser('Марина Лесникова', 'member', '', '121');
+  req.active = false; req.pending = true; req.title = 'member';
   // Гарантированная персона для демо-сценария
   const anna = users.find((u) => u.districtId === '121' && u.role === 'member')!;
   anna.name = 'Анна Соколова';
@@ -125,7 +128,7 @@ export function createSeed(): State {
 
   districts.forEach((d) => {
     const team = users.filter((u) => u.districtId === d.id);
-    const members = team.filter((u) => u.role === 'member');
+    const members = team.filter((u) => u.role === 'member' && u.active);
     const coord = team.find((u) => u.role === 'coordinator')!;
     const p = perf[d.id];
     for (let w = -10; w <= 2; w++) {
