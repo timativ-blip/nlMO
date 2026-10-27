@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as P from '../data/perm';
 import { addDistrict, changePassword, connectTelegram, DEMO_MODE, disconnectTelegram, getState, renameDistrict, resetDemo, setUi, setupBot, updateUser, useAppState } from '../data/store';
 import type { BirthdayVisibility, Notification } from '../data/types';
-import { ROLE_LABEL } from '../data/types';
+import { roleLabel } from '../data/types';
 import { fmtStamp } from '../lib/date';
 import { go } from '../lib/router';
 import { useLookup, useMe } from '../ui/hooks';
@@ -29,7 +29,7 @@ export function ProfilePage() {
   };
   return (
     <>
-      <div className="page-head"><div className="grow"><h1>Профиль</h1><div className="sub">{ROLE_LABEL[me.role]} · {L.dname(me.districtId)}</div></div><Button variant="primary" icon={Save} disabled={!dirty} onClick={save}>Сохранить</Button></div>
+      <div className="page-head"><div className="grow"><h1>Профиль</h1><div className="sub">{roleLabel(me)} · {L.dname(me.districtId)}</div></div><Button variant="primary" icon={Save} disabled={!dirty} onClick={save}>Сохранить</Button></div>
       <div className="grid g-main">
         <div className="card card-pad col" style={{ gap: 16 }}>
           <div className="row" style={{ gap: 16 }}>
@@ -46,7 +46,7 @@ export function ProfilePage() {
             <Field label="Рабочая почта" error={errs.email}><Input type="email" value={v.email} invalid={!!errs.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
             <Field label="Телефон" error={errs.phone}><Input type="tel" value={v.phone} invalid={!!errs.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} placeholder="+7 (900) 000-00-00" /></Field>
             <Field label="Telegram"><Input value={v.telegram ?? ''} onChange={(e) => setV({ ...v, telegram: e.target.value })} placeholder="@username" /></Field>
-            <Field label="Роль и округ" hint="Меняет руководитель области"><Input value={`${ROLE_LABEL[me.role]} · ${L.dname(me.districtId)}`} disabled /></Field>
+            <Field label="Роль и округ" hint="Меняет руководитель области"><Input value={`${roleLabel(me)} · ${L.dname(me.districtId)}`} disabled /></Field>
           </div>
         </div>
         <div className="card card-pad col" style={{ gap: 12 }}>

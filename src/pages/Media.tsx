@@ -6,15 +6,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { FUNCTIONS_URL } from '../lib/supabase';
 import { go, type Route } from '../lib/router';
 import { MONTHS_NOM, plural } from '../lib/date';
-import { Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
+import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
+import { MoMap } from '../ui/widgets';
 
 type Src = 'vk' | 'tg' | 'youtube' | 'tiktok' | 'instagram' | 'other';
 // [дата, заголовок, канал, источник, автор, баллы, вклад, просмотры, лайки, комм., репосты, избранное, url, засчитан, причина]
 type Post = [string, string, string, Src, number, number, number, number, number, number, number, number, string, 0 | 1, string];
-interface PdData { groups: { id: string; num: number; name: string }[]; people: [string, string][]; posts: Post[]; updated: string }
+export interface PdData { groups: { id: string; num: number; name: string }[]; people: [string, string][]; posts: Post[]; updated: string }
 interface Channel { status: 'ok' | 'empty' | 'closed' | 'error' | 'nokey'; last?: string; url?: string; link?: string; about?: string }
 interface GroupRow { okrug: string; city: string; coord: string; resp: string; vk: Channel | null; tg: Channel | null }
-interface GroupsData { groups: GroupRow[]; vkEnabled: boolean; updated: string }
+export interface GroupsData { groups: GroupRow[]; vkEnabled: boolean; updated: string }
 
 const SRC_ORDER: Src[] = ['vk', 'tg', 'youtube', 'tiktok', 'instagram'];
 const SRC_LABEL: Record<Src, string> = { vk: 'ВКонтакте', tg: 'Telegram', youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', other: 'Другое' };
@@ -31,7 +32,7 @@ function reasonOf(t: string) {
   return t.trim().slice(0, 60) || 'условия не выполнены';
 }
 
-function useJson<T>(name: string, everyMs: number) {
+export function useJson<T>(name: string, everyMs: number) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -47,7 +48,7 @@ function useJson<T>(name: string, everyMs: number) {
 interface Person { i: number; name: string; g: string; pts: number; ptsOk: number; ptsBad: number; contrib: number; views: number; likes: number; posts: number; okPosts: number; bad: number; reasons: Map<string, number>; src: Partial<Record<Src, { pts: number; views: number; posts: number }>> }
 interface Group { id: string; num: number; label: string; roster: number; authors: number; pts: number; posts: number; views: number; mem: Person[] }
 
-function compute(D: PdData, month: string) {
+export function compute(D: PdData, month: string) {
   const P = D.posts.filter((p) => p[0].startsWith(month));
   const people: Person[] = D.people.map(([name, g], i) => ({ i, name, g, pts: 0, ptsOk: 0, ptsBad: 0, contrib: 0, views: 0, likes: 0, posts: 0, okPosts: 0, bad: 0, reasons: new Map(), src: {} }));
   for (const p of P) {
@@ -75,9 +76,9 @@ type Calc = ReturnType<typeof compute>;
 
 const SrcIcon = ({ s }: { s: Src }) => <span className={`src-ic src-${s}`} title={SRC_LABEL[s]}>{s === 'vk' ? 'VK' : s === 'tg' ? 'TG' : s === 'youtube' ? 'YT' : s === 'tiktok' ? 'TT' : s === 'instagram' ? 'IG' : '•'}</span>;
 
-type View = 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
+type View = 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
 export default function MediaPage({ route }: { route: Route }) {
-  const view = (route.parts[1] as View) || 'okr';
+  const view = (route.parts[1] as View) || 'dash';
   const pd = useJson<PdData>('media-pd', 60000);
   const months = useMemo(() => (pd.data ? [...new Set(pd.data.posts.map((p) => p[0].slice(0, 7)))].sort() : []), [pd.data]);
   const [month, setMonth] = useState('');
@@ -102,12 +103,13 @@ export default function MediaPage({ route }: { route: Route }) {
         )}
         <Button size="sm" icon={Info} onClick={() => open('about', '')}>О рейтинге</Button>
       </div>
-      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
+      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'dash', label: 'Дашборд' }, { value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
       {view === 'groups' ? <GroupsView pd={pd.data} /> : pd.error && !pd.data ? (
         <div className="card"><Empty icon={Info} title="Не удалось загрузить данные «Пиши-Делись»" text="Таблица или документ со списком сейчас недоступны. Обновите страницу через пару минут." /></div>
       ) : !A ? <div className="map-skel" style={{ height: 320 }} /> : (
         <>
           <Ticker A={A} month={month} />
+          {view === 'dash' && pd.data && <DashView A={A} D={pd.data} month={month} months={months} open={open} />}
           {view === 'okr' && <OkrView A={A} open={open} />}
           {view === 'aut' && <AutView A={A} open={open} />}
           {view === 'loose' && <LooseView A={A} open={open} />}
@@ -389,5 +391,109 @@ function GroupsView({ pd }: { pd: PdData | null }) {
         : [...new Set(items.map((it) => it.g.okrug))].map((o) => <div key={o} style={{ marginBottom: 14 }}><h2 className="sec-title">{okrName(o)}</h2><div className="card gcards">{items.filter((it) => it.g.okrug === o).map(card)}</div></div>)}
       <p className="small muted">Сколько дней назад в группе был последний пост (закреплённые не считаются). Зелёный — сегодня или вчера, жёлтый — 2–3 дня, красный — 4 дня и больше. Нажмите на метку, чтобы открыть пост. Список групп берётся из таблицы, проверка — раз в 15 минут.{!G.data.vkEnabled && <b> ВКонтакте пока не проверяется: нужен сервисный ключ ВК (секрет VK_TOKEN в Supabase).</b>}</p>
     </>
+  );
+}
+
+/* ───────── Дашборд месяца ───────── */
+const SRC_COLOR: Record<Src, string> = { vk: '#2c76e6', tg: '#229ed9', youtube: '#e53935', tiktok: '#121514', instagram: '#c13584', other: '#8a918e' };
+function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: string; months: string[]; open: Opener }) {
+  const prevM = months[months.indexOf(month) - 1];
+  const B = useMemo(() => (prevM ? compute(D, prevM) : null), [D, prevM]);
+  const G = useJson<GroupsData>('media-groups', 5 * 60000);
+  const sum = (C: Calc) => {
+    const act = C.people.filter((a) => a.posts > 0);
+    const roster = C.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.roster, 0);
+    const writing = C.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.mem.filter((a) => a.okPosts).length, 0);
+    return { posts: C.P.length, pts: act.reduce((s, a) => s + a.pts, 0), authors: act.length, views: act.reduce((s, a) => s + a.views, 0), contrib: act.reduce((s, a) => s + a.contrib, 0), writingShare: roster ? writing / roster : 0, writing, roster };
+  };
+  const cur = sum(A), prev = B ? sum(B) : null;
+  const delta = (a: number, b?: number) => {
+    if (b === undefined) return null;
+    const d = b ? (a - b) / b : Infinity;
+    // при почти пустом прошлом месяце процент бессмысленен — показываем саму цифру
+    if (!Number.isFinite(d) || Math.abs(d) > 3) return <span>в прошлом месяце — {fmt(b)}</span>;
+    return <span className={d >= 0 ? 'delta-up' : 'delta-down'}>{d >= 0 ? '+' : ''}{Math.round(d * 100)}% к прошлому месяцу</span>;
+  };
+  const okr = A.groups.filter((g) => g.num > 0);
+  const maxPts = Math.max(1, ...okr.map((g) => g.pts));
+  const shares = okr.map((g) => ({ g, w: g.mem.filter((a) => a.okPosts).length, share: g.roster ? g.mem.filter((a) => a.okPosts).length / g.roster : 0 })).sort((a, b) => b.share - a.share);
+  // по дням
+  const [y, mo] = month.split('-').map(Number);
+  const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const daily = Array.from({ length: days }, (_, d) => ({ d: d + 1, posts: 0, pts: 0 }));
+  A.P.forEach((p) => { const d = +p[0].slice(8, 10); if (daily[d - 1]) { daily[d - 1].posts++; daily[d - 1].pts += p[5]; } });
+  const maxDay = Math.max(1, ...daily.map((x) => x.posts));
+  // соцсети
+  const bySrc = SRC_ORDER.concat('other' as Src).map((sname) => ({ s: sname, posts: A.P.filter((p) => p[3] === sname).length, pts: A.P.filter((p) => p[3] === sname).reduce((t, p) => t + p[5], 0) })).filter((x) => x.posts);
+  const top = A.people.filter((a) => a.posts).sort((a, b) => b.pts - a.pts).slice(0, 5);
+  const gStat = G.data ? (() => {
+    const c = { fresh: 0, warn: 0, bad: 0, none: 0 } as Record<string, number>;
+    const silent = new Map<string, number>();
+    G.data.groups.forEach((g) => (['vk', 'tg'] as const).forEach((n) => { if (!g[n]) return; const st = chState(g[n]); c[st.cls]++; if (st.cls === 'bad') silent.set(g.okrug, (silent.get(g.okrug) ?? 0) + 1); }));
+    return { c, silent: [...silent].sort((a, b) => b[1] - a[1]).slice(0, 5) };
+  })() : null;
+  const Tile = ({ label, value, foot }: { label: string; value: string; foot?: React.ReactNode }) => <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">{label}</span><span className="kpi-value">{value}</span><span className="kpi-foot">{foot}</span></div>;
+  return (
+    <div className="col" style={{ gap: 16 }}>
+      <div className="grid dash-tiles">
+        <Tile label="Посты" value={fmt(cur.posts)} foot={delta(cur.posts, prev?.posts)} />
+        <Tile label="Баллы" value={fmt(cur.pts)} foot={delta(cur.pts, prev?.pts)} />
+        <Tile label="Авторы с постами" value={fmt(cur.authors)} foot={delta(cur.authors, prev?.authors)} />
+        <Tile label="Пишут из списка" value={`${Math.round(cur.writingShare * 100)}%`} foot={`${cur.writing} из ${cur.roster} человек`} />
+        <Tile label="Просмотры" value={fmt(cur.views)} foot={delta(cur.views, prev?.views)} />
+        <Tile label="Вклад в рейтинг региона" value={fmt(cur.contrib)} foot={delta(cur.contrib, prev?.contrib)} />
+      </div>
+      <div className="grid g-main">
+        <div className="card">
+          <div className="card-head"><h2 className="grow">Баллы по округам</h2><span className="small muted">нажмите на округ</span></div>
+          <div className="card-body"><MoMap values={Object.fromEntries(okr.map((g) => [g.id, g.posts ? (g.pts / maxPts) * 1.1 : null]))} onPick={(id) => open('g', id)} caption="баллы: меньше → больше" tip={(id) => { const g = okr.find((x) => x.id === id); return g ? `${fmt(g.pts)} баллов · ${g.posts} ${posts_(g.posts)}` : 'нет данных'; }} /></div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h2 className="grow">Доля пишущих</h2><span className="small muted">из списка округа</span></div>
+          <div className="card-body col" style={{ gap: 2 }}>
+            {shares.map(({ g, w, share }) => (
+              <button key={g.id} className="share-row" onClick={() => open('g', g.id)}>
+                <span className="ellipsis">{g.label}</span><Bar value={share} tone="ok" /><span className="num">{Math.round(share * 100)}%</span><span className="small muted nowrap">{w}/{g.roster}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head"><h2 className="grow">Посты по дням</h2><span className="small muted">{MONTHS_NOM[mo - 1]} {y}</span></div>
+        <div className="card-body">
+          <div className="daily" role="img" aria-label="Количество постов по дням месяца">
+            {daily.map((x) => <div key={x.d} className="daily-col" title={`${x.d} число: ${x.posts} ${posts_(x.posts)}, ${fmt(x.pts)} баллов`}><span className="daily-bar" style={{ height: `${(x.posts / maxDay) * 100}%` }} /><span className="daily-d">{x.d % 5 === 0 || x.d === 1 ? x.d : ''}</span></div>)}
+          </div>
+        </div>
+      </div>
+      <div className="grid g-3">
+        <div className="card">
+          <div className="card-head"><h2>Соцсети</h2></div>
+          <div className="card-body">
+            <div className="stack" style={{ height: 14, marginBottom: 12 }}>{bySrc.map((x) => <i key={x.s} style={{ width: `${(x.posts / Math.max(1, cur.posts)) * 100}%`, background: SRC_COLOR[x.s] }} />)}</div>
+            {bySrc.sort((a, b) => b.posts - a.posts).map((x) => <div key={x.s} className="row" style={{ padding: '5px 0' }}><SrcIcon s={x.s} /><span className="grow">{SRC_LABEL[x.s]}</span><span className="small muted">{Math.round((x.posts / Math.max(1, cur.posts)) * 100)}%</span><b className="num" style={{ minWidth: 54, textAlign: 'right' }}>{fmt(x.posts)}</b></div>)}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h2>Топ-5 авторов</h2></div>
+          <div className="card-body" style={{ padding: '6px 0' }}>
+            {top.map((a, k) => <button key={a.i} className="list-item" onClick={() => open('p', String(a.i))}><span className="rank">{k + 1}</span><span className="grow"><span className="title ellipsis" style={{ display: 'block' }}>{a.name}</span><span className="small muted">{A.label(a.g)}</span></span><span className="num">{fmt(a.pts)}</span></button>)}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h2 className="grow">Группы ВК и ТГ</h2><button className="btn btn-ghost btn-sm" onClick={() => go('/media/groups')}>Все</button></div>
+          <div className="card-body">
+            {!gStat ? <div className="map-skel" style={{ height: 120 }} /> : (
+              <>
+                <div className="row wrap" style={{ marginBottom: 10 }}><span className="badge st-done">свежие: {gStat.c.fresh}</span><span className="badge st-review">2–3 дня: {gStat.c.warn}</span><span className="badge st-overdue">молчат 4+: {gStat.c.bad}</span></div>
+                <div className="small muted" style={{ marginBottom: 4 }}>Где больше всего молчащих групп</div>
+                {gStat.silent.length ? gStat.silent.map(([o, n]) => <div key={o} className="row" style={{ padding: '4px 0' }}><span className="grow">{A.label(o) || (o === 'МО' ? 'Региональные' : o)}</span><b className="num">{n}</b></div>) : <span className="small muted">Молчащих групп нет</span>}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

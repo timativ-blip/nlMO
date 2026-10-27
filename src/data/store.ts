@@ -648,7 +648,7 @@ export async function addPerson(p: Partial<User>): Promise<{ id: string; passwor
   }
   const id = uid('u');
   mutate((s) => {
-    s.users.push({ id, name: p.name!.trim(), role: p.role ?? 'member', position: p.position ?? '', districtId: p.districtId ?? null, email: p.email!, phone: p.phone ?? '', telegram: p.telegram, birthdayVisibility: 'district', active: true });
+    s.users.push({ id, name: p.name!.trim(), role: p.role ?? 'member', title: p.title ?? null, position: p.position ?? '', districtId: p.districtId ?? null, email: p.email!, phone: p.phone ?? '', telegram: p.telegram, birthdayVisibility: 'district', active: true });
     const d = s.districts.find((x) => x.id === p.districtId);
     if (p.role === 'coordinator' && d && !d.coordinatorId) d.coordinatorId = id;
   });
@@ -660,7 +660,7 @@ export async function resetPassword(userId: string) {
 }
 
 /** Роль, округ и активность — меняет руководитель области. */
-export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'districtId' | 'active' | 'position'>>) {
+export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'title' | 'districtId' | 'active' | 'position'>>) {
   mutate((s, actor) => {
     if (actor.role !== 'head') deny('Роль, округ и доступ меняет руководитель области.');
     if (id === actor.id && (patch.role && patch.role !== 'head' || patch.active === false)) throw new AppError('Нельзя снять с себя роль руководителя или отключить себя — попросите другого руководителя.');

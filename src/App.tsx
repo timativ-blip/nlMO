@@ -5,7 +5,7 @@ import * as P from './data/perm';
 import { DEMO_MODE, markRead, onSaveError, signOut, switchUser, useAppState, usePhase, useSyncing } from './data/store';
 import AuthGate from './pages/Auth';
 import type { Notification } from './data/types';
-import { ROLE_LABEL } from './data/types';
+import { roleLabel } from './data/types';
 import { fmtAgo, fmtDayMonth, todayISO, addDays } from './lib/date';
 import { go, useRoute } from './lib/router';
 import AnalyticsPage from './pages/Analytics';
@@ -202,12 +202,12 @@ function ProfileMenu() {
     return [s.users.find((u) => u.role === 'head'), istraCoord ? L.user(istraCoord) : undefined, s.users.find((u) => u.role === 'staff'), anna].filter(Boolean) as typeof s.users;
   }, [s.users, s.districts, L]);
   const [other, setOther] = useState('');
-  const pick = (id: string) => { switchUser(id); setOpen(false); toast(`Вы вошли как ${L.user(id)?.name} (${ROLE_LABEL[L.user(id)!.role]})`); };
+  const pick = (id: string) => { switchUser(id); setOpen(false); toast(`Вы вошли как ${L.user(id)?.name} (${roleLabel(L.user(id)!)})`); };
   return (
     <div style={{ position: 'relative' }} ref={ref}>
       <button className="row btn btn-ghost" style={{ paddingLeft: 4 }} onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Меню профиля">
         <Avatar user={me} size={32} />
-        <span className="col hide-sm" style={{ gap: 0, alignItems: 'flex-start' }}><b style={{ fontSize: 13 }}>{me.name}</b><span className="small muted" style={{ fontWeight: 500 }}>{ROLE_LABEL[me.role]}</span></span>
+        <span className="col hide-sm" style={{ gap: 0, alignItems: 'flex-start' }}><b style={{ fontSize: 13 }}>{me.name}</b><span className="small muted" style={{ fontWeight: 500 }}>{roleLabel(me)}</span></span>
         <ChevronDown size={15} className="hide-sm" />
       </button>
       {open && (
@@ -221,12 +221,12 @@ function ProfileMenu() {
               <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}><FlaskConical size={13} style={{ verticalAlign: -2 }} /> Демо: войти как</div>
               {personas.map((u) => (
                 <button key={u.id} className={`menu-item ${u.id === me.id ? 'active' : ''}`} style={{ padding: '7px 6px', borderRadius: 8 }} onClick={() => pick(u.id)}>
-                  <Avatar user={u} size={26} /><span className="grow"><span style={{ display: 'block', fontWeight: 600 }}>{u.name}</span><span className="small muted">{ROLE_LABEL[u.role]}{u.districtId ? ` · ${L.dname(u.districtId)}` : ''}</span></span>
+                  <Avatar user={u} size={26} /><span className="grow"><span style={{ display: 'block', fontWeight: 600 }}>{u.name}</span><span className="small muted">{roleLabel(u)}{u.districtId ? ` · ${L.dname(u.districtId)}` : ''}</span></span>
                 </button>
               ))}
               <select className="select select-sm" style={{ marginTop: 6 }} value={other} onChange={(e) => { setOther(''); if (e.target.value) pick(e.target.value); }} aria-label="Другой пользователь">
                 <option value="">Другой пользователь…</option>
-                {s.users.map((u) => <option key={u.id} value={u.id}>{u.name} — {ROLE_LABEL[u.role]}</option>)}
+                {s.users.map((u) => <option key={u.id} value={u.id}>{u.name} — {roleLabel(u)}</option>)}
               </select>
               <div className="small muted" style={{ marginTop: 6 }}>В рабочей версии вход по почте/телефону, переключения ролей нет.</div>
             </div>
@@ -251,7 +251,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     const t = q.trim().toLowerCase();
     if (!t) return [];
     const out: { group: string; label: string; sub: string; action: () => void }[] = [];
-    s.users.filter((u) => u.active && `${u.name} ${u.email} ${u.position}`.toLowerCase().includes(t)).slice(0, 5).forEach((u) => out.push({ group: 'Люди', label: u.name, sub: `${ROLE_LABEL[u.role]} · ${L.dname(u.districtId)}`, action: () => go(`/team/people/${u.id}`) }));
+    s.users.filter((u) => u.active && `${u.name} ${u.email} ${u.position}`.toLowerCase().includes(t)).slice(0, 5).forEach((u) => out.push({ group: 'Люди', label: u.name, sub: `${roleLabel(u)} · ${L.dname(u.districtId)}`, action: () => go(`/team/people/${u.id}`) }));
     s.districts.filter((d) => d.name.toLowerCase().includes(t)).forEach((d) => out.push({ group: 'Округа', label: d.name, sub: `Координатор: ${L.user(d.coordinatorId)?.name ?? '—'}`, action: () => go(`/team/districts/${d.id}`) }));
     s.tasks.filter((x) => P.canSeeTask(me, x) && x.title.toLowerCase().includes(t)).sort((a, b) => b.due.localeCompare(a.due)).slice(0, 7).forEach((x) => out.push({ group: 'Задачи', label: x.title, sub: `${L.dname(x.districtId)} · ${L.user(x.assigneeId)?.name} · до ${fmtDayMonth(x.due)}`, action: () => openTask(x.id) }));
     s.events.filter((e) => P.canSeeEvent(me, e) && e.title.toLowerCase().includes(t)).slice(0, 4).forEach((e) => out.push({ group: 'Мероприятия', label: e.title, sub: fmtDayMonth(e.start), action: () => openEvent(e.id) }));

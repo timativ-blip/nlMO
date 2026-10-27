@@ -3,7 +3,7 @@ import { Copy, KeyRound, ShieldCheck, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { addPerson, canAddPerson, DEMO_MODE, resetPassword, setUserAdmin, useAppState } from '../data/store';
 import type { Role, User } from '../data/types';
-import { ROLE_LABEL } from '../data/types';
+import { TEAM_ROLES, teamRoleOf, type TeamRole } from '../data/types';
 import { useLookup, useMe } from '../ui/hooks';
 import { Button, Field, Input, Modal, run, Select, toast } from '../ui/kit';
 
@@ -23,7 +23,7 @@ function AddPersonModal({ onClose }: { onClose: () => void }) {
   const s = useAppState();
   const me = useMe();
   const head = me.role === 'head';
-  const [v, setV] = useState<Partial<User>>({ name: '', email: '', phone: '', position: '', role: 'member', districtId: head ? '' : me.districtId });
+  const [v, setV] = useState<Partial<User>>({ name: '', email: '', phone: '', position: '', role: 'member', title: 'member', districtId: head ? '' : me.districtId });
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -46,14 +46,14 @@ function AddPersonModal({ onClose }: { onClose: () => void }) {
     } finally { setBusy(false); }
   };
   if (created) return <PasswordModal title="Сотрудник добавлен" person={created} onClose={onClose} />;
-  const roles: Role[] = head ? ['member', 'coordinator', 'staff', 'head'] : ['member'];
+  const roles = TEAM_ROLES.filter((r) => head || r.access === 'member');
   return (
     <Modal open onClose={onClose} title="Добавить человека" width={600} footer={<><Button variant="ghost" onClick={onClose}>Отмена</Button><Button variant="primary" icon={UserPlus} disabled={busy} onClick={save}>{busy ? 'Создаю…' : 'Добавить'}</Button></>}>
       <div className="col" style={{ gap: 14 }}>
         <div className="grid g-2" style={{ gap: 12 }}>
           <Field label="Имя и фамилия" required error={errs.name}><Input autoFocus value={v.name} invalid={!!errs.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <Field label="Рабочая почта (логин)" required error={errs.email}><Input type="email" value={v.email} invalid={!!errs.email} onChange={(e) => set({ email: e.target.value })} /></Field>
-          <Field label="Роль"><Select disabled={!head} value={v.role} onChange={(e) => set({ role: e.target.value as Role })} options={roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} /></Field>
+          <Field label="Роль в команде" hint={TEAM_ROLES.find((r) => r.key === v.title)?.hint}><Select value={v.title ?? 'member'} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value)!; set({ title: r.key, role: r.access }); }} options={roles.map((r) => ({ value: r.key, label: r.label }))} /></Field>
           <Field label="Округ" required={needsDistrict} error={errs.districtId} hint={!head ? 'Координатор добавляет участников своего округа' : !needsDistrict ? 'Для штаба и руководителей — необязательно' : undefined}>
             <Select disabled={!head} value={v.districtId ?? ''} invalid={!!errs.districtId} onChange={(e) => set({ districtId: e.target.value || null })} options={[{ value: '', label: needsDistrict ? 'Выберите округ' : 'Вся область' }, ...s.districts.map((d) => ({ value: d.id, label: d.name }))]} />
           </Field>
@@ -100,7 +100,7 @@ export function PersonAdminCard({ u }: { u: User }) {
       <h2 className="row"><ShieldCheck size={18} />Доступ и роль</h2>
       {head && (
         <div className="grid g-3" style={{ gap: 12 }}>
-          <Field label="Роль"><Select value={u.role} onChange={(e) => run(() => setUserAdmin(u.id, { role: e.target.value as Role }), 'Роль изменена')} options={(Object.keys(ROLE_LABEL) as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))} /></Field>
+          <Field label="Роль в команде" hint={TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.hint}><Select value={teamRoleOf(u)} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value)!; run(() => setUserAdmin(u.id, { role: r.access, title: r.key as TeamRole }), 'Роль изменена'); }} options={TEAM_ROLES.map((r) => ({ value: r.key, label: r.label }))} /></Field>
           <Field label="Округ"><Select value={u.districtId ?? ''} onChange={(e) => run(() => setUserAdmin(u.id, { districtId: e.target.value || null }), 'Округ изменён')} options={[{ value: '', label: 'Вся область' }, ...s.districts.map((d) => ({ value: d.id, label: d.name }))]} /></Field>
           <Field label="Доступ"><Select value={u.active ? 'on' : 'off'} onChange={(e) => run(() => setUserAdmin(u.id, { active: e.target.value === 'on' }), e.target.value === 'on' ? 'Доступ включён' : 'Доступ отключён — человек больше не сможет войти')} options={[{ value: 'on', label: 'Активен' }, { value: 'off', label: 'Отключён' }]} /></Field>
         </div>

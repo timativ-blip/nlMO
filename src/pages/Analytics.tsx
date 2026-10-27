@@ -11,8 +11,9 @@ import { openRecords } from '../ui/global';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Field, Input, Modal, run, Segmented, Tabs, toast } from '../ui/kit';
 import { ContextBar, HBars, TrendChart, useScopeDistrict } from '../ui/widgets';
+import { compute, useJson, type PdData } from './Media';
 
-type Tab = 'overview' | 'rating' | 'load' | 'metrics';
+type Tab = 'overview' | 'okrugs' | 'rating' | 'load' | 'metrics';
 
 export default function AnalyticsPage({ route }: { route: Route }) {
   const tab = (route.parts[1] as Tab) || 'overview';
@@ -20,10 +21,11 @@ export default function AnalyticsPage({ route }: { route: Route }) {
     <>
       <div className="page-head">
         <div className="grow"><h1>Аналитика</h1><div className="sub">Каждая цифра открывает список записей, из которых она рассчитана</div></div>
-        <ContextBar showDistrict={tab !== 'rating'} />
+        <ContextBar showDistrict={tab !== 'rating' && tab !== 'okrugs'} />
       </div>
-      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
+      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'okrugs', label: 'Сводка по округам' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
       {tab === 'overview' && <Overview />}
+      {tab === 'okrugs' && <OkrugSummary />}
       {tab === 'rating' && <Rating />}
       {tab === 'load' && <Load />}
       {tab === 'metrics' && <Metrics />}
@@ -265,5 +267,61 @@ function Metrics() {
       </div>
       <p className="small muted">Сейчас выбран период: {period.label.toLowerCase()} ({fmtDayMonth(period.from)} — {fmtDayMonth(period.to)}). Сравнение с прошлым периодом той же длины.</p>
     </div>
+  );
+}
+
+/* ───────── Сводка по округам: задачи и медиа в одной таблице ───────── */
+function OkrugSummary() {
+  const s = useAppState();
+  const period = usePeriod();
+  const L = useLookup();
+  const pd = useJson<PdData>('media-pd', 60000);
+  const rows = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
+  const months = useMemo(() => (pd.data ? [...new Set(pd.data.posts.map((p) => p[0].slice(0, 7)))].sort() : []), [pd.data]);
+  const pdMonth = months.includes(period.to.slice(0, 7)) ? period.to.slice(0, 7) : months[months.length - 1];
+  const A = useMemo(() => (pd.data && pdMonth ? compute(pd.data, pdMonth) : null), [pd.data, pdMonth]);
+  const data = rows.map((r) => {
+    const g = A?.groups.find((x) => x.id === r.districtId);
+    const writing = g ? g.mem.filter((a) => a.okPosts).length : 0;
+    return {
+      r, overdue: s.tasks.filter((t) => t.districtId === r.districtId && isOverdue(t)).length,
+      pts: g?.pts ?? null, posts: g?.posts ?? null, writing: g && g.roster ? writing / g.roster : null, roster: g?.roster ?? 0, writers: writing,
+    };
+  }).sort((a, b) => (L.districts.get(a.r.districtId)?.num ?? 0) - (L.districts.get(b.r.districtId)?.num ?? 0));
+  // цвет ячейки: место значения среди округов (лучше — насыщеннее), для просрочек — наоборот
+  const shade = (vals: (number | null)[], v: number | null, invert = false) => {
+    if (v === null) return undefined;
+    const xs = vals.filter((x): x is number => x !== null);
+    const lo = Math.min(...xs), hi = Math.max(...xs);
+    let t = hi === lo ? 0.5 : (v - lo) / (hi - lo);
+    if (invert) t = 1 - t;
+    return { background: `rgba(20,168,156,${0.08 + t * 0.55})` };
+  };
+  const col = <K extends keyof (typeof data)[number]>(k: K) => data.map((d) => d[k] as unknown as number | null);
+  const plan = data.map((d) => (d.r.assigned.length ? d.r.plan : null));
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0 }}>Задачи — за период «{period.label.toLowerCase()}»; «Пиши-Делись» — за {pdMonth ? `${pdMonth.slice(5)}.${pdMonth.slice(0, 4)}` : 'последний месяц'}. Чем насыщеннее ячейка, тем лучше округ относительно остальных (для просрочек — меньше лучше). Нажмите на округ, чтобы открыть его страницу.</p>
+      <div className="card table-wrap">
+        <table className="tbl heat">
+          <thead><tr><th>Округ</th><th className="right">План</th><th className="right">Выполнение задач</th><th className="right">Вовремя</th><th className="right">Просрочено</th><th className="right">Баллы ПД</th><th className="right">Посты ПД</th><th className="right">Пишут</th><th className="right">Оценка</th></tr></thead>
+          <tbody>
+            {data.map((d, i) => (
+              <tr key={d.r.districtId} className="clickable" onClick={() => go(`/team/districts/${d.r.districtId}`)}>
+                <td className="t-title nowrap">{L.dname(d.r.districtId)}</td>
+                <td className="hc" style={shade(plan, plan[i])}>{d.r.assigned.length ? pct(d.r.plan) : '—'}</td>
+                <td className="hc" style={shade(data.map((x) => (x.r.assigned.length ? x.r.completion : null)), d.r.assigned.length ? d.r.completion : null)}>{d.r.assigned.length ? pct(d.r.completion) : '—'}</td>
+                <td className="hc" style={shade(data.map((x) => (x.r.done.length ? x.r.onTime : null)), d.r.done.length ? d.r.onTime : null)}>{d.r.done.length ? pct(d.r.onTime) : '—'}</td>
+                <td className="hc" style={shade(col('overdue'), d.overdue, true)}>{d.overdue}</td>
+                <td className="hc" style={shade(col('pts'), d.pts)}>{d.pts === null ? (pd.error ? '—' : '…') : num(d.pts)}</td>
+                <td className="hc" style={shade(col('posts'), d.posts)}>{d.posts === null ? '—' : num(d.posts)}</td>
+                <td className="hc" style={shade(col('writing'), d.writing)} title={`${d.writers} из ${d.roster}`}>{d.writing === null ? '—' : pct(d.writing)}</td>
+                <td className="hc" style={shade(data.map((x) => x.r.score), d.r.score)}>{d.r.score === null ? '—' : Math.round(d.r.score)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { signedUrl, STORAGE_PREFIX, uploadFile } from '../data/backend';
 import { isOverdue, type TrendPoint } from '../data/calc';
 import { getState, setUi, uid, useAppState } from '../data/store';
 import type { Attachment, Task, User } from '../data/types';
-import { ROLE_LABEL } from '../data/types';
+import { roleLabel } from '../data/types';
 import { fmtDate, fmtDayMonth, PERIOD_OPTIONS, type PeriodKey } from '../lib/date';
 import { useLookup, useMe } from './hooks';
 import { openRecords, openTask, useGlobal } from './global';
@@ -119,7 +119,8 @@ interface MapGeo { bbox: [number, number, number, number]; features: MapFeature[
 let geoCache: Promise<MapGeo | null> | null = null;
 const loadGeo = () => (geoCache ??= fetch(`${import.meta.env.BASE_URL}mo-map.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
 
-export function MoMap({ values, onPick, dark, height }: { values: Record<string, number | null>; onPick: (id: string) => void; dark?: boolean; height?: number }) {
+/** values — доля 0…1.1 для цвета; caption — подпись шкалы; tip — текст значения во всплывающей подсказке */
+export function MoMap({ values, onPick, dark, height, caption = 'план: меньше → больше', tip }: { values: Record<string, number | null>; onPick: (id: string) => void; dark?: boolean; height?: number; caption?: string; tip?: (okrugId: string) => string }) {
   const s = useAppState();
   const [geo, setGeo] = useState<MapGeo | null | undefined>(undefined);
   const [hover, setHover] = useState<{ f: MapFeature; x: number; y: number } | null>(null);
@@ -160,10 +161,10 @@ export function MoMap({ values, onPick, dark, height }: { values: Record<string,
       {hover && (
         <div className="map-tip" style={{ left: Math.min(hover.x + 12, 220), top: hover.y + 12 }}>
           <b>{hover.f.city}</b><span>округ {dname(hover.f.okrug)}</span>
-          <span>план: {values[hover.f.okrug] === null || values[hover.f.okrug] === undefined ? 'нет данных' : Math.round((values[hover.f.okrug] ?? 0) * 100) + '%'}</span>
+          <span>{tip ? tip(hover.f.okrug) : `план: ${values[hover.f.okrug] === null || values[hover.f.okrug] === undefined ? 'нет данных' : Math.round((values[hover.f.okrug] ?? 0) * 100) + '%'}`}</span>
         </div>
       )}
-      <div className="map-legend"><span className="lg"><i style={{ background: fill(0.1) }} /><i style={{ background: fill(0.5) }} /><i style={{ background: fill(0.8) }} /><i style={{ background: fill(1.1) }} />план: меньше → больше</span><span className="lg"><i style={{ background: fill(null) }} />нет задач</span></div>
+      <div className="map-legend"><span className="lg"><i style={{ background: fill(0.1) }} /><i style={{ background: fill(0.5) }} /><i style={{ background: fill(0.8) }} /><i style={{ background: fill(1.1) }} />{caption}</span><span className="lg"><i style={{ background: fill(null) }} />нет данных</span></div>
     </div>
   );
 }
@@ -241,7 +242,7 @@ export function PeoplePicker({ value, onChange, users, label = 'Участник
             <input type="checkbox" checked={value.includes(u.id)} onChange={() => toggle(u.id)} />
             <Avatar user={u} size={22} />
             <span className="grow ellipsis">{u.name}</span>
-            <span className="small muted nowrap hide-sm">{L.dname(u.districtId)} · {ROLE_LABEL[u.role].split(' ')[0]}</span>
+            <span className="small muted nowrap hide-sm">{L.dname(u.districtId)} · {roleLabel(u)}</span>
           </label>
         ))}
         {!list.length && <div className="small muted" style={{ padding: 8 }}>Никого не нашли — проверьте написание имени.</div>}

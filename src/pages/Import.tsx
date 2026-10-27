@@ -2,7 +2,8 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Copy, FileUp, Upload } from 'lu
 import { useMemo, useRef, useState } from 'react';
 import * as P from '../data/perm';
 import { importPeople, importTasks, useAppState, type Credential, type TaskInput } from '../data/store';
-import type { Priority, Role, User } from '../data/types';
+import type { Priority, TeamRole, User } from '../data/types';
+import { TEAM_ROLES } from '../data/types';
 import { go } from '../lib/router';
 import { useMe } from '../ui/hooks';
 import { Button, Empty, Segmented, toast } from '../ui/kit';
@@ -43,7 +44,18 @@ function parseDate(v: unknown): string | null {
   if (!out || isNaN(Date.parse(out)) || new Date(out).toISOString().slice(0, 10) !== out) return null;
   return out;
 }
-const ROLE_MAP: Record<string, Role> = { руководитель: 'head', координатор: 'coordinator', штаб: 'staff', сотрудник: 'staff', участник: 'member', волонтёр: 'member', волонтер: 'member' };
+// текст из таблицы → роль в команде (уровень доступа берётся из TEAM_ROLES)
+function teamRoleFrom(t: string): TeamRole {
+  const x = t.trim().toLowerCase();
+  if (/разраб/.test(x)) return 'developer';
+  if (/зам/.test(x)) return 'deputy';
+  if (/руковод/.test(x)) return 'head';
+  if (/координ/.test(x)) return 'coordinator';
+  if (/медиа|smm|смм/.test(x)) return 'media';
+  if (/штаб|сотрудник/.test(x)) return 'staff';
+  if (/член/.test(x)) return 'party_member';
+  return 'member';
+}
 const PRIO_MAP: Record<string, Priority> = { низкий: 'low', обычный: 'normal', средний: 'normal', высокий: 'high', срочный: 'urgent' };
 
 export default function ImportPage() {
@@ -96,9 +108,10 @@ export default function ImportPage() {
       const phone = String(cell(r, 'phone') ?? '').trim();
       const bRaw = cell(r, 'birthday'); const birthday = parseDate(bRaw);
       if (bRaw && !birthday) errors.push('дата рождения не распознана (ДД.ММ.ГГГГ)');
-      const role = ROLE_MAP[String(cell(r, 'role') ?? '').trim().toLowerCase().split(' ')[0]] ?? 'member';
+      const title = teamRoleFrom(String(cell(r, 'role') ?? ''));
+      const role = TEAM_ROLES.find((x) => x.key === title)!.access;
       dup = s.users.some((u) => (email && u.email.toLowerCase() === email.toLowerCase()) || (phone && phone.replace(/\D/g, '').length > 9 && u.phone.replace(/\D/g, '') === phone.replace(/\D/g, '')));
-      const value: Partial<User> = { name, districtId, email, phone, role, position: String(cell(r, 'position') ?? ''), telegram: String(cell(r, 'telegram') ?? '') || undefined, birthday: birthday ?? undefined };
+      const value: Partial<User> = { name, districtId, email, phone, role, title, position: String(cell(r, 'position') ?? ''), telegram: String(cell(r, 'telegram') ?? '') || undefined, birthday: birthday ?? undefined };
       return { idx, errors, dup, value, preview: [name, s.districts.find((d) => d.id === districtId)?.name ?? '—', email || phone || '—'] };
     }
     const title = String(cell(r, 'title') ?? '').trim();

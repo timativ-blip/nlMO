@@ -8,6 +8,7 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const fail = (error: string, status = 400) => json({ error }, status);
 const ROLES = ['head', 'coordinator', 'staff', 'member'];
+const TITLES = ['head', 'developer', 'deputy', 'coordinator', 'staff', 'media', 'member', 'party_member'];
 
 function genPassword() {
   const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -15,7 +16,7 @@ function genPassword() {
   return [...bytes].map((b) => abc[b % abc.length]).join('');
 }
 
-interface NewPerson { name?: string; email?: string; phone?: string; role?: string; districtId?: string | null; position?: string; telegram?: string; birthday?: string }
+interface NewPerson { name?: string; email?: string; phone?: string; role?: string; title?: string; districtId?: string | null; position?: string; telegram?: string; birthday?: string }
 
 async function createPerson(p: NewPerson, password: string) {
   const email = (p.email ?? '').trim().toLowerCase();
@@ -23,12 +24,13 @@ async function createPerson(p: NewPerson, password: string) {
   if (name.split(/\s+/).length < 2) throw new Error('Укажите имя и фамилию.');
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error(`Проверьте почту «${email}»: она нужна для входа.`);
   if (!ROLES.includes(p.role ?? '')) throw new Error('Неизвестная роль.');
+  if (p.title && !TITLES.includes(p.title)) throw new Error('Неизвестная роль в команде.');
   if ((p.role === 'coordinator' || p.role === 'member') && !p.districtId) throw new Error('Для координатора и участника нужен округ.');
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (error) throw new Error(/already|registered|exists/i.test(error.message) ? `Пользователь с почтой ${email} уже есть.` : error.message);
   const id = data.user.id;
   const profile = {
-    id, name, role: p.role, position: p.position ?? '', districtId: p.districtId ?? null, email, phone: p.phone ?? '',
+    id, name, role: p.role, title: p.title || null, position: p.position ?? '', districtId: p.districtId ?? null, email, phone: p.phone ?? '',
     telegram: p.telegram || undefined, birthday: p.birthday || undefined, birthdayVisibility: 'district', active: true,
   };
   const { error: e2 } = await admin.from('profiles').insert({ id, data: profile });
@@ -48,7 +50,7 @@ Deno.serve(async (req) => {
       const { count } = await admin.from('profiles').select('id', { count: 'exact', head: true });
       if (count) return fail('Система уже настроена — войдите своей учётной записью.');
       if (!body.password || String(body.password).length < 8) return fail('Пароль — не короче 8 символов.');
-      const r = await createPerson({ ...body.profile, role: 'head', districtId: null }, String(body.password));
+      const r = await createPerson({ ...body.profile, role: 'head', title: 'head', districtId: null }, String(body.password));
       return json({ ok: true, id: r.id });
     }
 

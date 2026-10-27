@@ -4,7 +4,7 @@ import { addDays, todayISO, weekStart, stamp } from '../lib/date';
 import { OKRUGS } from './okrugs';
 import type { CalEvent, District, Metric, Priority, Report, State, Task, TaskStatus, User } from './types';
 
-export const DATA_VERSION = 5;
+export const DATA_VERSION = 6;
 
 function rng(seed: number) {
   return () => {
@@ -105,6 +105,10 @@ export function createSeed(): State {
     const n = d.id === '128' ? 2 : between(3, 4);
     for (let i = 0; i < n; i++) mkUser(fresh(r() < 0.55), 'member', DIRECTIONS[(i + d.name.length) % DIRECTIONS.length], d.id);
   });
+  // Роли в команде поверх уровня доступа
+  users.find((u) => u.name === 'Дмитрий Орлов')!.title = 'deputy';
+  users.find((u) => u.name === 'Павел Гришин')!.title = 'media';
+  users.filter((u) => u.role === 'member').forEach((u, k) => { if (k % 3 === 1) u.title = 'party_member'; });
   // Гарантированная персона для демо-сценария
   const anna = users.find((u) => u.districtId === '121' && u.role === 'member')!;
   anna.name = 'Анна Соколова';

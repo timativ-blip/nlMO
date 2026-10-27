@@ -4,7 +4,7 @@ import { ACTIVE, isOverdue, kpis, num, pct, rateDistricts, taskPoints } from '..
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
 import type { Role } from '../data/types';
-import { ROLE_LABEL } from '../data/types';
+import { roleLabel, teamRoleOf, TEAM_ROLES } from '../data/types';
 import { addDays, fmtDate, fmtDayMonth, fmtTime, todayISO } from '../lib/date';
 import { go, type Route } from '../lib/router';
 import { openEvent, openNewEvent, openNewTask, openRecords } from '../ui/global';
@@ -37,13 +37,13 @@ function People() {
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
   const [district, setDistrict] = useState('');
-  const list = useMemo(() => s.users.filter((u) => (u.active || me.role === 'head') && (!q || `${u.name} ${u.position} ${u.email}`.toLowerCase().includes(q.toLowerCase())) && (!role || u.role === role) && (!district || u.districtId === district)).sort((a, b) => ['head', 'staff', 'coordinator', 'member'].indexOf(a.role) - ['head', 'staff', 'coordinator', 'member'].indexOf(b.role) || a.name.localeCompare(b.name)), [s.users, q, role, district, me.role]);
+  const list = useMemo(() => s.users.filter((u) => (u.active || me.role === 'head') && (!q || `${u.name} ${u.position} ${u.email}`.toLowerCase().includes(q.toLowerCase())) && (!role || teamRoleOf(u) === role) && (!district || u.districtId === district)).sort((a, b) => ['head', 'staff', 'coordinator', 'member'].indexOf(a.role) - ['head', 'staff', 'coordinator', 'member'].indexOf(b.role) || a.name.localeCompare(b.name)), [s.users, q, role, district, me.role]);
   const active = (id: string) => s.tasks.filter((t) => t.assigneeId === id && ACTIVE(t));
   return (
     <>
       <div className="toolbar">
         <div className="search-input"><Search size={15} /><input className="input" placeholder="Имя, направление, почта" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Поиск людей" /></div>
-        <select className="select select-sm" style={{ width: 190 }} value={role} onChange={(e) => setRole(e.target.value)} aria-label="Роль"><option value="">Все роли</option>{(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+        <select className="select select-sm" style={{ width: 190 }} value={role} onChange={(e) => setRole(e.target.value)} aria-label="Роль"><option value="">Все роли</option>{TEAM_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}</select>
         <select className="select select-sm" style={{ width: 160 }} value={district} onChange={(e) => setDistrict(e.target.value)} aria-label="Округ"><option value="">Все округа</option>{s.districts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
         {(q || role || district) && <Button size="sm" variant="ghost" onClick={() => { setQ(''); setRole(''); setDistrict(''); }}>Сбросить</Button>}
         <span className="spacer" /><span className="small muted">{list.length} чел.</span>
@@ -61,7 +61,7 @@ function People() {
                 return (
                   <tr key={u.id} className="clickable" tabIndex={0} onClick={() => go(`/team/people/${u.id}`)} onKeyDown={(e) => e.key === 'Enter' && go(`/team/people/${u.id}`)}>
                     <td className="t-title"><span className="row"><Avatar user={u} size={34} /><span className="col" style={{ gap: 0 }}><span className="ellipsis">{u.name}{!u.active && <span className="badge st-cancelled" style={{ marginLeft: 6 }}>отключён</span>}</span><span className="small muted ellipsis" style={{ fontWeight: 400 }}>{u.position}</span></span></span></td>
-                    <td><span className={`badge ${u.role === 'member' ? 'badge-soft' : 'badge-brand'}`}>{ROLE_LABEL[u.role]}</span></td>
+                    <td><span className={`badge ${u.role === 'member' ? 'badge-soft' : 'badge-brand'}`}>{roleLabel(u)}</span></td>
                     <td className="nowrap">{L.dname(u.districtId)}</td>
                     <td className="hide-card small"><div>{u.phone}</div><div className="muted">{u.email}</div></td>
                     <td className="right nowrap"><b>{a.length}</b>{o > 0 && <span className="overdue-text small"> · {o} просрочено</span>}</td>
@@ -138,7 +138,7 @@ function PersonPage({ id }: { id: string }) {
         <Avatar user={u} size={76} />
         <div className="grow">
           <h1>{u.name}</h1>
-          <div className="row wrap" style={{ marginTop: 6 }}><span className="badge badge-brand">{ROLE_LABEL[u.role]}</span><span className="muted">{u.position}</span>{u.districtId && <a href={`#/team/districts/${u.districtId}`} className="row" style={{ gap: 4 }}><MapPin size={14} />{L.dname(u.districtId)}</a>}</div>
+          <div className="row wrap" style={{ marginTop: 6 }}><span className="badge badge-brand">{roleLabel(u)}</span><span className="muted">{u.position}</span>{u.districtId && <a href={`#/team/districts/${u.districtId}`} className="row" style={{ gap: 4 }}><MapPin size={14} />{L.dname(u.districtId)}</a>}</div>
           <div className="row wrap" style={{ marginTop: 10, gap: 16 }}>
             <a href={`tel:${u.phone.replace(/[^\d+]/g, '')}`} className="row" style={{ gap: 5 }}><Phone size={14} />{u.phone}</a>
             <a href={`mailto:${u.email}`} className="row" style={{ gap: 5 }}><Mail size={14} />{u.email}</a>

@@ -231,9 +231,9 @@ export function Empty({ icon: Icon, title, text, action }: { icon: LucideIcon; t
   );
 }
 
-export function Bar({ value, tone }: { value: number; tone?: 'warn' | 'bad' }) {
+export function Bar({ value, tone }: { value: number; tone?: 'warn' | 'bad' | 'ok' }) {
   const v = Math.max(0, Math.min(1, value));
-  return <div className={`bar ${tone ?? (value < 0.5 ? 'bad' : value < 0.8 ? 'warn' : '')}`} role="meter" aria-valuenow={Math.round(v * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${v * 100}%` }} /></div>;
+  return <div className={`bar ${tone === 'ok' ? '' : tone ?? (value < 0.5 ? 'bad' : value < 0.8 ? 'warn' : '')}`} role="meter" aria-valuenow={Math.round(v * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${v * 100}%` }} /></div>;
 }
 
 /** Небольшой поповер с закрытием по клику снаружи и Esc */

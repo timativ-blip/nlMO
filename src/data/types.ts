@@ -1,11 +1,26 @@
 export type Role = 'head' | 'coordinator' | 'staff' | 'member';
+// Роль в команде — что видят коллеги; уровень доступа (role) определяет права.
+export type TeamRole = 'head' | 'developer' | 'deputy' | 'coordinator' | 'staff' | 'media' | 'member' | 'party_member';
+export const TEAM_ROLES: { key: TeamRole; label: string; access: Role; hint: string }[] = [
+  { key: 'head', label: 'Руководитель области', access: 'head', hint: 'все права' },
+  { key: 'developer', label: 'Разработчик', access: 'head', hint: 'права руководителя' },
+  { key: 'deputy', label: 'Заместитель руководителя', access: 'head', hint: 'права руководителя' },
+  { key: 'coordinator', label: 'Координатор округа', access: 'coordinator', hint: 'свой округ' },
+  { key: 'staff', label: 'Штаб', access: 'staff', hint: 'вся область, без подтверждения результатов' },
+  { key: 'media', label: 'Медиа-штаб', access: 'staff', hint: 'права штаба' },
+  { key: 'member', label: 'Участник команды', access: 'member', hint: 'свои задачи' },
+  { key: 'party_member', label: 'Член партии', access: 'member', hint: 'права участника' },
+];
+export const teamRoleOf = (u: { role: Role; title?: TeamRole | null }): TeamRole => u.title ?? u.role;
+export const roleLabel = (u: { role: Role; title?: TeamRole | null }) => TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.label ?? ROLE_LABEL[u.role];
 export type BirthdayVisibility = 'all' | 'district' | 'hidden';
 
 export interface User {
   id: string;
   name: string;
   photo?: string; // dataURL
-  role: Role;
+  role: Role; // уровень доступа
+  title?: TeamRole | null; // роль в команде (по умолчанию совпадает с уровнем доступа)
   position: string;
   districtId: string | null;
   email: string;
@@ -182,7 +197,7 @@ export interface State {
 export const ROLE_LABEL: Record<Role, string> = {
   head: 'Руководитель области',
   coordinator: 'Координатор округа',
-  staff: 'Сотрудник штаба',
+  staff: 'Штаб',
   member: 'Участник команды',
 };
 
