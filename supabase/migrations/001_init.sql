@@ -334,4 +334,5 @@ insert into metrics (id, data) values
   ('m_supporters', '{"id":"m_supporters","name":"Новые сторонники","unit":"чел.","monthlyPlan":16,"weight":1.5,"description":"Люди, оставившие контакты и согласие на связь. Значение указывает исполнитель."}'),
   ('m_events', '{"id":"m_events","name":"Проведённые мероприятия","unit":"мероприятий","monthlyPlan":2,"weight":1,"description":"Публичные мероприятия округа: субботники, турниры, лекции."}');
 insert into settings values ('weights', '{"personCompletion":40,"personOnTime":30,"personVolume":30,"districtPlan":50,"districtCompletion":25,"districtOnTime":25,"priority":{"low":0.5,"normal":1,"high":1.5,"urgent":2},"lateFactor":0.7,"minTasks":3}');
-insert into app_secrets values ('functions_url', 'https://ayvxcziiobkypcjcxmvj.supabase.co/functions/v1');
+insert into app_secrets values ('functions_url', 'https://wlqwwhshqrqanapsnsik.supabase.co/functions/v1');
+insert into app_secrets values ('app_url', 'https://timativ-blip.github.io/nlMO/');
