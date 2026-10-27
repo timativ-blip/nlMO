@@ -1,20 +1,19 @@
-// «Пульс области»: зашёл — и сразу видно, где хорошо, где плохо и что будет к концу месяца.
+// «Пульс области»: зашёл — и сразу видно, где хорошо и где плохо.
 // Источники: задачи (база), «Пиши-Делись» (media-pd), партийные группы (media-groups), ежедневные отчёты.
-import { AlertTriangle, ArrowRight, CheckCircle2, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { isOverdue, pct, rateDistricts, weeklyTrend } from '../data/calc';
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
-import { addDays, fmtDayMonth, getPeriod, monthEnd, plural, todayISO, WD_SHORT, weekday, weekStart } from '../lib/date';
+import { addDays, fmtDayMonth, getPeriod, plural, todayISO, WD_SHORT, weekday, weekStart } from '../lib/date';
 import { go } from '../lib/router';
 import { useLookup } from '../ui/hooks';
-import { Bar, Empty, Segmented } from '../ui/kit';
-import { compute, useJson, type GroupsData, type PdData } from './Media';
+import { Empty, Modal, Segmented } from '../ui/kit';
+import { compute, PostCard, useJson, type GroupsData, type PdData } from './Media';
 
 type Light = 'green' | 'yellow' | 'red' | 'none';
 interface Signal { key: string; label: string; value: string; light: Light; alert?: string; link: string }
 const LIGHT_TXT: Record<Light, string> = { green: 'в норме', yellow: 'внимание', red: 'проблема', none: 'нет данных' };
-const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
 const lvl = (v: number | null, g: number, y: number, lowerIsBetter = false): Light => {
   if (v === null || Number.isNaN(v)) return 'none';
   if (lowerIsBetter) return v <= g ? 'green' : v <= y ? 'yellow' : 'red';
@@ -31,29 +30,17 @@ export default function PulsePage() {
   const month = today.slice(0, 7);
   const months = useMemo(() => (pd.data ? [...new Set(pd.data.posts.map((p) => p[0].slice(0, 7)))].sort() : []), [pd.data]);
   const pdMonth = months.includes(month) ? month : months[months.length - 1];
-  const prevPdMonth = pdMonth ? months[months.indexOf(pdMonth) - 1] : undefined;
   const A = useMemo(() => (pd.data && pdMonth ? compute(pd.data, pdMonth) : null), [pd.data, pdMonth]);
-  const Aprev = useMemo(() => (pd.data && prevPdMonth ? compute(pd.data, prevPdMonth) : null), [pd.data, prevPdMonth]);
   const period = getPeriod('month');
   const dist = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
   const workdays = useMemo(() => { const out: string[] = []; for (let k = 0; out.length < 5 && k < 10; k++) { const d = addDays(today, -k); if (weekday(d) < 5) out.push(d); } return out; }, [today]);
 
-  // доля прошедших дней месяца данных «Пиши-Делись» — для прогноза
-  const elapsed = useMemo(() => {
-    if (!pdMonth) return 1;
-    const last = monthEnd(pdMonth + '-01');
-    const end = pdMonth === month ? pdAsOf(pd.data) : last;
-    return (+end.slice(8)) / (+last.slice(8));
-  }, [pdMonth, month, pd.data]);
 
   const rows = useMemo(() => s.districts.map((d) => {
     const r = dist.find((x) => x.districtId === d.id);
     const g = A?.groups.find((x) => x.id === d.id);
-    const gp = Aprev?.groups.find((x) => x.id === d.id);
-    const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
+        const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
     const writing = g && g.roster ? g.mem.filter((a) => a.okPosts).length / g.roster : null;
-    const fRaw = g && gp && gp.pts ? g.pts / Math.max(elapsed, 0.05) / gp.pts : null;
-    const forecast = fRaw !== null && fRaw <= 4 ? fRaw : null; // прошлый месяц неполный — не сравниваем
     const silent = gr.data ? gr.data.groups.filter((x) => x.okrug === d.id).reduce((n, x) => n + (['vk', 'tg'] as const).filter((k) => { const ch = x[k]; if (!ch || ch.status !== 'ok' || !ch.last) return ch?.status === 'empty'; return (Date.now() - Date.parse(ch.last)) / 864e5 >= 4; }).length, 0) : null;
     const req = s.users.filter((u) => u.active && u.districtId === d.id && P.mustReportDaily(u));
     const dailyShare = req.length ? req.reduce((n, u) => n + workdays.filter((wd) => s.dailyReports.some((x) => x.userId === u.id && x.day === wd)).length, 0) / (req.length * workdays.length) : null;
@@ -61,14 +48,13 @@ export default function PulsePage() {
       { key: 'plan', label: 'План задач', value: r && r.assigned.length ? pct(r.plan) : '—', light: r && r.assigned.length ? lvl(r.plan, 0.8, 0.5) : 'none', alert: r && r.assigned.length && r.plan < 0.5 ? `план задач выполнен на ${pct(r.plan)}` : undefined, link: `/team/districts/${d.id}` },
       { key: 'overdue', label: 'Просрочки', value: String(overdue), light: lvl(overdue, 0, 3, true), alert: overdue > 3 ? `${overdue} ${plural(overdue, ['просроченная задача', 'просроченные задачи', 'просроченных задач'])}` : undefined, link: `/tasks?overdue=1&district=${d.id}` },
       { key: 'writing', label: 'Пишут в ПД', value: writing === null ? '—' : pct(writing), light: lvl(writing, 0.7, 0.5), alert: writing !== null && writing < 0.5 ? `пишут только ${pct(writing)} из списка` : undefined, link: '/media/idle' },
-      { key: 'trend', label: 'Прогноз ПД', value: forecast === null ? '—' : pct(forecast), light: lvl(forecast, 0.9, 0.7), alert: forecast !== null && forecast < 0.7 ? `при текущем темпе баллов ПД будет ${pct(forecast)} от прошлого месяца` : undefined, link: '/media/okr' },
       { key: 'groups', label: 'Молчат группы', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа молчит', 'группы молчат', 'групп молчат'])} 4+ дней` : undefined, link: '/media/groups' },
       { key: 'daily', label: 'Отчёты дня', value: dailyShare === null ? '—' : pct(dailyShare), light: lvl(dailyShare, 0.8, 0.5), alert: dailyShare !== null && dailyShare < 0.5 ? `ежедневные отчёты сданы на ${pct(dailyShare)} за 5 рабочих дней` : undefined, link: '/daily' },
     ];
     const reds = signals.filter((x) => x.light === 'red').length, yellows = signals.filter((x) => x.light === 'yellow').length;
     const overall: Light = reds >= 2 ? 'red' : reds || yellows >= 2 ? 'yellow' : signals.every((x) => x.light === 'none') ? 'none' : 'green';
     return { d, signals, overall, reds, yellows };
-  }), [s, dist, A, Aprev, gr.data, elapsed, workdays]);
+  }), [s, dist, A, gr.data, workdays]);
 
   const order: Record<Light, number> = { red: 0, yellow: 1, green: 2, none: 3 };
   const alerts = rows.flatMap((r) => r.signals.filter((x) => x.alert).map((x) => ({ d: r.d, x }))).sort((a, b) => order[a.x.light] - order[b.x.light]);
@@ -78,7 +64,7 @@ export default function PulsePage() {
   return (
     <>
       <div className="page-head">
-        <div className="grow"><h1>Пульс области</h1><div className="sub">Светофор округов, тревоги и прогноз · задачи, «Пиши-Делись», группы и ежедневные отчёты</div></div>
+        <div className="grow"><h1>Пульс области</h1><div className="sub">Светофор округов и тревоги · задачи, «Пиши-Делись», группы и ежедневные отчёты</div></div>
         <div className="row wrap"><span className="badge st-done">в норме: {counts.green}</span><span className="badge st-review">внимание: {counts.yellow}</span><span className="badge st-overdue">проблема: {counts.red}</span></div>
       </div>
 
@@ -91,7 +77,7 @@ export default function PulsePage() {
         ))}
       </div>
 
-      <div className="grid g-main" style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 16 }}>
         <div className="card">
           <div className="card-head"><AlertTriangle size={17} /><h2 className="grow">Тревоги</h2><span className="small muted">{alerts.length}</span></div>
           <div className="card-body" style={{ padding: '6px 0' }}>
@@ -104,7 +90,6 @@ export default function PulsePage() {
             ))}
           </div>
         </div>
-        <Forecast A={A} Aprev={Aprev} elapsed={elapsed} pdMonth={pdMonth} dist={dist} />
       </div>
 
       <HeatOkrugWeek pd={pd.data} />
@@ -119,33 +104,6 @@ export default function PulsePage() {
   );
 }
 
-function Forecast({ A, Aprev, elapsed, pdMonth, dist }: { A: ReturnType<typeof compute> | null; Aprev: ReturnType<typeof compute> | null; elapsed: number; pdMonth?: string; dist: ReturnType<typeof rateDistricts> }) {
-  const assigned = dist.reduce((n, d) => n + d.assigned.length, 0);
-  const planAvg = assigned ? dist.filter((d) => d.assigned.length).reduce((n, d) => n + d.plan, 0) / dist.filter((d) => d.assigned.length).length : null;
-  const ptsNow = A ? A.people.reduce((n, a) => n + a.pts, 0) : 0;
-  const postsNow = A ? A.P.length : 0;
-  const ptsPrev = Aprev ? Aprev.people.reduce((n, a) => n + a.pts, 0) : 0;
-  const postsPrev = Aprev ? Aprev.P.length : 0;
-  const f = (now: number) => now / Math.max(elapsed, 0.05);
-  const Row = ({ label, now, fc, prev }: { label: string; now: number; fc: number; prev: number }) => (
-    <div className="fc-row">
-      <span className="small muted">{label}</span>
-      <div className="row"><b className="num" style={{ fontSize: 26 }}>{nf.format(fc)}</b><span className="small muted">прогноз · сейчас {nf.format(now)}</span></div>
-      {prev > 0 && (Math.abs(fc / prev - 1) > 3
-        ? <span className="small muted">в прошлом месяце — {nf.format(prev)} (данные неполные, сравнение не показываем)</span>
-        : <><Bar value={fc / prev / 1.3} tone="ok" /><span className={`small ${fc >= prev ? 'delta-up' : 'delta-down'}`}>{fc >= prev ? '+' : ''}{Math.round((fc / prev - 1) * 100)}% к прошлому месяцу ({nf.format(prev)})</span></>)}
-    </div>
-  );
-  return (
-    <div className="card">
-      <div className="card-head"><TrendingUp size={17} /><h2 className="grow">Прогноз на конец месяца</h2><span className="small muted">прошло {Math.round(elapsed * 100)}% месяца</span></div>
-      <div className="card-body col" style={{ gap: 16 }}>
-        <div className="fc-row"><span className="small muted">План задач по области (темп)</span><b className="num" style={{ fontSize: 26 }}>{planAvg === null ? '—' : pct(planAvg)}</b><span className="small muted">при текущем темпе к концу месяца — столько же: план считается пропорционально прошедшим дням</span></div>
-        {A ? <><Row label={`Баллы «Пиши-Делись» · ${pdMonth ? new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(pdMonth + '-15')) : ''}`} now={ptsNow} fc={f(ptsNow)} prev={ptsPrev} /><Row label="Посты «Пиши-Делись»" now={postsNow} fc={f(postsNow)} prev={postsPrev} /></> : <div className="map-skel" style={{ height: 120 }} />}
-      </div>
-    </div>
-  );
-}
 
 /* ───────── Тепловые карты ───────── */
 /** Последняя дата в данных «Пиши-Делись»: таблицу обновляют не каждый день, окна считаем от неё */
@@ -186,25 +144,47 @@ function HeatOkrugWeek({ pd }: { pd: PdData | null }) {
 }
 
 function ActivityCalendar({ pd }: { pd: PdData | null }) {
+  const L = useLookup();
   const asOf = pdAsOf(pd);
   const weeks = weeksBack(12, asOf);
+  const [day, setDay] = useState<string | null>(null);
   const byDay = useMemo(() => { const m = new Map<string, number>(); pd?.posts.forEach((p) => m.set(p[0], (m.get(p[0]) ?? 0) + 1)); return m; }, [pd]);
   const max = Math.max(1, ...weeks.flatMap((w) => Array.from({ length: 7 }, (_, k) => byDay.get(addDays(w, k)) ?? 0)));
-  const today = asOf;
+  // посты выбранного дня по округам, внутри — по баллам
+  const groups = useMemo(() => {
+    if (!pd || !day) return [];
+    const by = new Map<string, PdData['posts']>();
+    pd.posts.filter((p) => p[0] === day).forEach((p) => { const g = pd.people[p[4]]?.[1] ?? ''; by.set(g, [...(by.get(g) ?? []), p]); });
+    return [...by.entries()].map(([g, posts]) => ({ g, posts: posts.sort((a, b) => b[5] - a[5]) })).sort((a, b) => b.posts.length - a.posts.length);
+  }, [pd, day]);
   return (
     <div className="card">
-      <div className="card-head"><h2 className="grow">Календарь активности</h2><span className="small muted">посты ПД, 12 недель по {fmtDayMonth(asOf)}</span></div>
+      <div className="card-head"><h2 className="grow">Календарь активности</h2><span className="small muted">посты ПД, 12 недель по {fmtDayMonth(asOf)} · нажмите на день</span></div>
       <div className="card-body">
         <div className="cal-heat">
           <div className="cal-heat-days">{WD_SHORT.map((w) => <span key={w}>{w}</span>)}</div>
           {weeks.map((w) => (
             <div key={w} className="cal-heat-col">
-              {Array.from({ length: 7 }, (_, k) => { const d = addDays(w, k); const n = byDay.get(d) ?? 0; return <span key={k} className="cal-heat-cell" style={{ background: d > today ? 'transparent' : heatBg(n ? n / max : 0.0001), outline: d === today ? '2px solid var(--ink)' : undefined }} title={`${fmtDayMonth(d)}: ${n} ${plural(n, ['пост', 'поста', 'постов'])}`} />; })}
+              {Array.from({ length: 7 }, (_, k) => {
+                const d = addDays(w, k); const n = byDay.get(d) ?? 0;
+                if (d > asOf) return <span key={k} className="cal-heat-cell" />;
+                return <button key={k} type="button" className="cal-heat-cell" disabled={!n} onClick={() => setDay(d)} style={{ background: heatBg(n ? n / max : 0.0001) }} title={`${fmtDayMonth(d)}: ${n} ${plural(n, ['пост', 'поста', 'постов'])}`} aria-label={`${fmtDayMonth(d)}: ${n} ${plural(n, ['пост', 'поста', 'постов'])}`} />;
+              })}
             </div>
           ))}
         </div>
         {!pd && <div className="small muted">Загружаю данные «Пиши-Делись»…</div>}
       </div>
+      <Modal open={!!day} onClose={() => setDay(null)} width={720} title={day ? `${fmtDayMonth(day)} · ${byDay.get(day) ?? 0} ${plural(byDay.get(day) ?? 0, ['пост', 'поста', 'постов'])}` : ''}>
+        <div className="col" style={{ gap: 14 }}>
+          {groups.map(({ g, posts }) => (
+            <div key={g} className="col" style={{ gap: 8 }}>
+              <div className="row"><b className="grow">{g ? L.dname(g) : 'Без округа'}</b><span className="small muted">{posts.length} {plural(posts.length, ['пост', 'поста', 'постов'])}</span></div>
+              {posts.map((p, i) => <PostCard key={i} p={p} />)}
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { MoMap } from '../ui/widgets';
 
 type Src = 'vk' | 'tg' | 'youtube' | 'tiktok' | 'instagram' | 'other';
 // [дата, заголовок, канал, источник, автор, баллы, вклад, просмотры, лайки, комм., репосты, избранное, url, засчитан, причина]
-type Post = [string, string, string, Src, number, number, number, number, number, number, number, number, string, 0 | 1, string];
+export type Post = [string, string, string, Src, number, number, number, number, number, number, number, number, string, 0 | 1, string];
 export interface PdData { groups: { id: string; num: number; name: string }[]; people: [string, string][]; posts: Post[]; updated: string }
 interface Channel { status: 'ok' | 'empty' | 'closed' | 'error' | 'nokey'; last?: string; url?: string; link?: string; about?: string }
 interface GroupRow { okrug: string; city: string; coord: string; resp: string; vk: Channel | null; tg: Channel | null }
@@ -268,7 +268,7 @@ function IdleView({ A, open }: { A: Calc; open: Opener }) {
   );
 }
 
-function PostCard({ p }: { p: Post }) {
+export function PostCard({ p }: { p: Post }) {
   return (
     <article className="post-card">
       <div className="row" style={{ alignItems: 'flex-start' }}><SrcIcon s={p[3]} /><div className="grow"><b className="post-title">{p[1] || 'Без заголовка'}</b><div className="small muted">{p[2]} · {p[0].split('-').reverse().join('.')}</div></div>{p[12] && <a className="btn btn-ghost btn-sm" href={p[12]} target="_blank" rel="noreferrer"><ExternalLink size={14} />Открыть</a>}</div>
