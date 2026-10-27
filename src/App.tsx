@@ -1,4 +1,4 @@
-import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
+import { BarChart3, Bell, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -9,6 +9,7 @@ import { ROLE_LABEL } from './data/types';
 import { fmtAgo, fmtDayMonth, todayISO, addDays } from './lib/date';
 import { go, useRoute } from './lib/router';
 import AnalyticsPage from './pages/Analytics';
+import MediaPage from './pages/Media';
 import CalendarPage, { EventDrawer, NewEventModal } from './pages/Calendar';
 import Home from './pages/Home';
 import ImportPage from './pages/Import';
@@ -29,6 +30,7 @@ const NAV = [
   { id: 'team', label: 'Команда', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: FileText },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
+  { id: 'media', label: 'Медиа', icon: Megaphone },
 ] as const;
 
 export default function App() {
@@ -74,6 +76,7 @@ function Workspace() {
     case 'team': content = <TeamPage route={route} />; break;
     case 'reports': content = <ReportsPage route={route} />; break;
     case 'analytics': content = <AnalyticsPage route={route} />; break;
+    case 'media': content = <MediaPage route={route} />; break;
     case 'profile': content = <ProfilePage />; break;
     case 'settings': content = <SettingsPage />; break;
     case 'import': content = <ImportPage />; break;
@@ -122,13 +125,13 @@ function Workspace() {
         {NAV.slice(0, 4).map((n) => (
           <button key={n.id} className={page === n.id ? 'active' : ''} onClick={() => go(`/${n.id}`)} aria-current={page === n.id ? 'page' : undefined}><n.icon size={21} />{n.label}</button>
         ))}
-        <button className={['reports', 'analytics', 'profile', 'settings'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
+        <button className={['reports', 'analytics', 'media', 'profile', 'settings'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
       </nav>
       {P.canCreateTask(me) && <button className="fab" aria-label="Новая задача" onClick={() => openNewTask()}><Plus size={26} /></button>}
 
       <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="Разделы">
         <div className="col" style={{ gap: 4 }}>
-          {[{ id: 'reports', label: 'Отчёты', icon: FileText }, { id: 'analytics', label: 'Аналитика и рейтинг', icon: BarChart3 }, { id: 'profile', label: 'Профиль', icon: UserIcon }, { id: 'settings', label: 'Настройки и импорт', icon: Settings }].map((n) => (
+          {[{ id: 'reports', label: 'Отчёты', icon: FileText }, { id: 'analytics', label: 'Аналитика и рейтинг', icon: BarChart3 }, { id: 'media', label: 'Медиа: Пиши-Делись и группы', icon: Megaphone }, { id: 'profile', label: 'Профиль', icon: UserIcon }, { id: 'settings', label: 'Настройки и импорт', icon: Settings }].map((n) => (
             <button key={n.id} className="menu-item" style={{ minHeight: 48, borderRadius: 10 }} onClick={() => { setMoreOpen(false); go(`/${n.id}`); }}><n.icon size={20} />{n.label}</button>
           ))}
         </div>
