@@ -682,7 +682,7 @@ export function addDistrict(name: string) {
     if (n.length < 2) throw new AppError('Введите название округа.');
     if (s.districts.some((d) => d.name.toLowerCase() === n.toLowerCase())) throw new AppError('Такой округ уже есть.');
     s.districts.push({ id: `d_${Date.now().toString(36)}`, name: n, coordinatorId: null });
-    s.districts.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    s.districts.sort((a, b) => (a.num ?? 999) - (b.num ?? 999) || a.name.localeCompare(b.name, 'ru'));
     ensureReports(s);
   });
 }

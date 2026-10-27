@@ -7,7 +7,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth-wrap">
       <div className="auth-side" aria-hidden>
-        <div className="brand"><div className="brand-mark">НЛ</div><div><div className="brand-name">Командный центр</div><div className="brand-sub">Московская область</div></div></div>
+        <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-light.png`} alt="Новые люди · Московская область" /><div className="brand-name">Командный центр</div></div>
         <h1 className="auth-claim">Задачи, результаты и общая картина — <em>в одном месте</em></h1>
       </div>
       <main className="auth-main">{children}</main>

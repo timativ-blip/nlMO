@@ -1,9 +1,10 @@
 // Демонстрационные данные. Все сроки строятся относительно текущей даты (МСК),
 // поэтому демо остаётся «живым». Все показатели затем рассчитываются из этих записей.
 import { addDays, todayISO, weekStart, stamp } from '../lib/date';
+import { OKRUGS } from './okrugs';
 import type { CalEvent, District, Metric, Priority, Report, State, Task, TaskStatus, User } from './types';
 
-export const DATA_VERSION = 4;
+export const DATA_VERSION = 5;
 
 function rng(seed: number) {
   return () => {
@@ -14,16 +15,7 @@ function rng(seed: number) {
   };
 }
 
-export const DISTRICTS: District[] = [
-  { id: 'istra', name: 'Истра', coordinatorId: null, pos: [128, 122] },
-  { id: 'krasnogorsk', name: 'Красногорск', coordinatorId: null, pos: [176, 138] },
-  { id: 'khimki', name: 'Химки', coordinatorId: null, pos: [188, 112] },
-  { id: 'odintsovo', name: 'Одинцово', coordinatorId: null, pos: [160, 165] },
-  { id: 'mytishchi', name: 'Мытищи', coordinatorId: null, pos: [224, 108] },
-  { id: 'podolsk', name: 'Подольск', coordinatorId: null, pos: [204, 210] },
-  { id: 'balashikha', name: 'Балашиха', coordinatorId: null, pos: [254, 146] },
-  { id: 'kolomna', name: 'Коломна', coordinatorId: null, pos: [318, 238] },
-];
+export const DISTRICTS: District[] = OKRUGS.map((o) => ({ id: o.id, num: o.num, name: o.name, cities: o.cities, coordinatorName: o.coordinatorName, coordinatorId: null }));
 
 const METRICS: Metric[] = [
   { id: 'm_meet', name: 'Встречи с жителями', unit: 'встреч', monthlyPlan: 2, weight: 1, description: 'Проведённые дворовые встречи и встречи в ЖК. Каждая подтверждённая задача-встреча даёт 1.' },
@@ -110,11 +102,11 @@ export function createSeed(): State {
   districts.forEach((d) => {
     const coord = mkUser(fresh(r() < 0.5), 'coordinator', `Координатор округа ${d.name}`, d.id);
     d.coordinatorId = coord.id;
-    const n = d.id === 'kolomna' ? 2 : between(3, 4);
+    const n = d.id === '128' ? 2 : between(3, 4);
     for (let i = 0; i < n; i++) mkUser(fresh(r() < 0.55), 'member', DIRECTIONS[(i + d.name.length) % DIRECTIONS.length], d.id);
   });
   // Гарантированная персона для демо-сценария
-  const anna = users.find((u) => u.districtId === 'istra' && u.role === 'member')!;
+  const anna = users.find((u) => u.districtId === '121' && u.role === 'member')!;
   anna.name = 'Анна Соколова';
   anna.email = 'a.sokolova@nl-mo.example';
   anna.telegram = '@a_sokolova';
@@ -122,7 +114,8 @@ export function createSeed(): State {
 
   const head = users[0];
   const tasks: Task[] = [];
-  const perf: Record<string, number> = { istra: 0.95, krasnogorsk: 0.9, khimki: 0.75, odintsovo: 0.85, mytishchi: 0.8, podolsk: 0.7, balashikha: 0.88, kolomna: 0.55 };
+  const PERF = [0.88, 0.75, 0.82, 0.95, 0.7, 0.8, 0.85, 0.62, 0.72, 0.9, 0.55, 0.78];
+  const perf: Record<string, number> = Object.fromEntries(districts.map((d, i) => [d.id, PERF[i % PERF.length]]));
   const curWeek = weekStart(today);
   const tsAt = (day: string, h = 12) => new Date(`${day}T${String(h - 3).padStart(2, '0')}:${String(between(0, 59)).padStart(2, '0')}:00Z`).toISOString();
 
@@ -231,7 +224,7 @@ export function createSeed(): State {
       const team = users.filter((u) => u.districtId === d.id);
       events.push({
         id: id('e'), title: `${title} — ${d.name}`, type, start: `${day}T${h}:00`, end: `${day}T${h + 2}:00`,
-        place: `${d.name}, ${pick(PLACES)}`, link: '', ownerId: d.coordinatorId!, participantIds: team.map((u) => u.id), districtId: d.id,
+        place: `${d.cities?.[0] ?? d.name}, ${pick(PLACES)}`, link: '', ownerId: d.coordinatorId!, participantIds: team.map((u) => u.id), districtId: d.id,
         description: 'Мероприятие округа. Ответственный — координатор, участники — команда округа.', history: [],
       });
     });

@@ -9,7 +9,7 @@ import { go } from '../lib/router';
 import { openEvent, openRecords, openTask } from '../ui/global';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge } from '../ui/kit';
-import { ContextBar, MoMap, TaskRow, TrendChart, useScopeDistrict } from '../ui/widgets';
+import { ContextBar, MoMap, Scribble, TaskRow, TrendChart, useScopeDistrict } from '../ui/widgets';
 
 export default function Home() {
   const me = useMe();
@@ -51,20 +51,29 @@ function ManagerHome() {
 
   return (
     <>
-      <section className="hero" aria-label="Обзор">
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <div className="badge" style={{ background: 'rgba(38,174,161,.2)', color: '#7fd6cc' }}>{period.label} · {scopeLabel}</div>
-          <h1 style={{ marginTop: 14 }}>План выполнен <em>на {pct(k.plan)}</em></h1>
+      <section className="hero torn" aria-label="Обзор">
+        <div className="hero-copy">
+          <span className="pill pill-ink">{period.label} · {scopeLabel}</span>
+          <h1>План выполнен <span className="scribble">{pct(k.plan)}<Scribble /></span></h1>
           <p className="lead">Подтверждено {k.confirmed.length} {plural(k.confirmed.length, ['результат', 'результата', 'результатов'])}. {k.overdue.length ? `Просрочено задач: ${k.overdue.length} — начните с них.` : 'Просроченных задач нет.'} {review.length ? `Ждут проверки: ${review.length}.` : ''}</p>
           <div className="hero-stats">
             <button className="hero-stat" onClick={() => openRecords({ title: 'Подтверждённые результаты', rule: 'Задачи со статусом «Выполнена», подтверждённые в выбранном периоде.', tasks: k.confirmed })}><b>{k.confirmed.length}</b><span>подтверждено</span></button>
             <button className="hero-stat" onClick={() => openRecords({ title: 'Результаты, сданные вовремя', rule: 'Подтверждённые задачи, результат по которым сдан не позже срока.', tasks: k.onTimeRecords })}><b>{pct(k.onTimeShare)}</b><span>вовремя</span></button>
-            <button className="hero-stat" onClick={() => go('/tasks?overdue=1')}><b style={{ color: k.overdue.length ? '#ffb4a8' : undefined }}>{k.overdue.length}</b><span>просрочено</span></button>
+            <button className="hero-stat" onClick={() => go('/tasks?overdue=1')}><b className={k.overdue.length ? 'warn' : ''}>{k.overdue.length}</b><span>просрочено</span></button>
             <button className="hero-stat" onClick={() => openRecords({ title: 'Ожидают проверки', tasks: review })}><b>{review.length}</b><span>на проверке</span></button>
           </div>
         </div>
-        <div className="hero-map"><MoMap dark values={Object.fromEntries(dist.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} onPick={(id) => go(`/team/districts/${id}`)} /></div>
+        <div className="hero-map"><MoMap values={Object.fromEntries(dist.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} onPick={(id) => go(`/team/districts/${id}`)} /></div>
       </section>
+      <div className="ticker" aria-label="Выполнение плана по округам">
+        <div className="ticker-track">
+          {[0, 1].map((k2) => (
+            <span key={k2} aria-hidden={k2 === 1}>
+              {[...dist].sort((a, b) => b.plan - a.plan).map((d) => <span key={d.districtId} className="tk-item"><b>{L.dname(d.districtId)}</b>{d.assigned.length ? pct(d.plan) : '—'}<i>✦</i></span>)}
+            </span>
+          ))}
+        </div>
+      </div>
 
       <div className="grid g-4" style={{ marginTop: 16 }}>
         <button className="kpi" onClick={() => go('/analytics')}>

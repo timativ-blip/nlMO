@@ -96,8 +96,8 @@ function Districts() {
               const rep = s.reports.find((r) => r.districtId === d.districtId && r.weekStart === lastWeek);
               return (
                 <tr key={d.districtId} className="clickable" tabIndex={0} onClick={() => go(`/team/districts/${d.districtId}`)} onKeyDown={(e) => e.key === 'Enter' && go(`/team/districts/${d.districtId}`)}>
-                  <td className="t-title">{d.name}</td>
-                  <td className="nowrap"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} />{L.user(dist.coordinatorId)?.name ?? <span className="muted">не назначен</span>}</span></td>
+                  <td className="t-title"><span className="ellipsis">{L.dname(d.districtId)}</span><span className="small muted" style={{ fontWeight: 400 }}>{dist.cities?.join(', ')}</span></td>
+                  <td className="nowrap"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} />{L.user(dist.coordinatorId)?.name ?? (dist.coordinatorName ? <span className="muted">{dist.coordinatorName}</span> : <span className="muted">не назначен</span>)}</span></td>
                   <td className="right">{team}</td>
                   <td className="right">{active}</td>
                   <td className={`right ${overdue ? 'overdue-text' : ''}`}>{overdue}</td>
@@ -110,11 +110,9 @@ function Districts() {
         </table>
       </div>
       <div className="card">
-        <div className="card-head"><h2>Схема области</h2></div>
+        <div className="card-head"><h2>Картограмма</h2></div>
         <div className="card-body">
           <MoMap values={Object.fromEntries(rows.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} onPick={(id) => go(`/team/districts/${id}`)} />
-          <div className="legend" style={{ marginTop: 8 }}><span><i style={{ background: '#26aea1' }} />план ≥ 80%</span><span><i style={{ background: '#e3a23b' }} />50–79%</span><span><i style={{ background: '#e05a4f' }} />&lt; 50%</span></div>
-          <p className="small muted" style={{ marginBottom: 0 }}>Схема условная — помогает быстро найти округ. Период: {period.label.toLowerCase()}.</p>
         </div>
       </div>
     </div>
@@ -190,7 +188,7 @@ function DistrictPage({ id }: { id: string }) {
     <>
       <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => go('/team/districts')} style={{ marginBottom: 10 }}>Все округа</Button>
       <div className="page-head">
-        <div className="grow"><h1>Округ {d.name}</h1><div className="sub">Координатор: {coord ? <a href={`#/team/people/${coord.id}`}>{coord.name}</a> : 'не назначен'} · команда {team.length} чел.</div></div>
+        <div className="grow"><h1>{d.num ? `${d.num} округ · ` : 'Округ '}{d.name}</h1><div className="sub">Координатор: {coord ? <a href={`#/team/people/${coord.id}`}>{coord.name}</a> : d.coordinatorName ? <>{d.coordinatorName} <span className="muted">(по таблице, ещё нет учётной записи)</span></> : 'не назначен'} · команда {team.length} чел.</div>{d.cities?.length ? <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>{d.cities.map((c) => <span key={c} className="pill">{c}</span>)}</div> : null}</div>
         <ContextBar showDistrict={false} />
         {P.canAssignIn(me, id) && <Button variant="primary" icon={Plus} onClick={() => openNewTask({ districtId: id })}>Задача</Button>}
         {P.canCreateEvent(me) && (P.isManager(me) || me.districtId === id) && <Button icon={CalendarDays} onClick={() => openNewEvent({ districtId: id })}>Мероприятие</Button>}

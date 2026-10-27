@@ -20,7 +20,10 @@ export interface District {
   id: string;
   name: string;
   coordinatorId: string | null;
-  pos?: [number, number]; // координаты на схеме области (необязательно)
+  num?: number; // номер избирательного округа (118–129)
+  cities?: string[]; // городские округа (ТИК) в составе
+  coordinatorName?: string | null; // координатор по таблице, если у него ещё нет учётной записи
+  pos?: [number, number];
 }
 
 export type TaskStatus = 'new' | 'in_progress' | 'review' | 'done' | 'cancelled';

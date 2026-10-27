@@ -455,3 +455,146 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .auth-claim { display: none; }
   .auth-card { padding: 20px; }
 }
+
+/* ───────── Картограмма ───────── */
+.mo-map { position: relative; }
+.mo-map svg { width: 100%; height: auto; display: block; }
+.map-unit { cursor: pointer; transition: opacity .15s, filter .15s; }
+.map-unit:hover, .map-unit.hl { filter: brightness(.9) saturate(1.2); }
+.map-unit:focus-visible { outline: none; stroke: #111; stroke-width: 3; }
+.map-num { font: 700 34px var(--font-display); fill: #0f2220; pointer-events: none; paint-order: stroke; stroke: rgba(255,255,255,.85); stroke-width: 4px; }
+.map-num.dark { fill: #fff; stroke: rgba(0,0,0,.55); }
+.map-tip { position: absolute; z-index: 5; background: #111; color: #fff; border-radius: 12px; padding: 8px 11px; font-size: 12.5px; display: flex; flex-direction: column; gap: 1px; pointer-events: none; box-shadow: var(--shadow-lg); min-width: 160px; }
+.map-tip span { color: #c9d6d4; }
+.map-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+.map-legend i { width: 16px; height: 10px; border-radius: 3px; display: inline-block; }
+.map-legend span { margin-right: 8px; }
+.map-skel { border-radius: 16px; background: linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.08), rgba(0,0,0,.04)); background-size: 200% 100%; animation: skel 1.2s linear infinite; }
+@keyframes skel { to { background-position: -200% 0; } }
+
+/* ═════════ Оформление 2.0: логотип «Новые люди», плакатная типографика ═════════ */
+:root {
+  --ink: #121514;
+  --ink-2: #1e2422;
+  --teal: #14a89c;
+  --teal-dark: #0e8c82;
+  --lime: #ddf247;
+  --paper: #f2f1ec;
+  --brand-900: #121514;
+  --brand-800: #1e2422;
+  --brand-500: #14a89c;
+  --bg: #f2f1ec;
+  --surface-2: #f7f6f2;
+  --border: #e3e1d9;
+  --border-strong: #cfccc1;
+  --text: #121514;
+  --text-2: #3b4240;
+  --muted: #6b716e;
+  --font-display: 'Oswald', 'Inter', sans-serif;
+  --r-lg: 24px;
+}
+h1, h2 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .005em; }
+h1 { font-size: 40px; font-weight: 700; line-height: 1; }
+h2 { font-size: 19px; font-weight: 600; }
+h3 { font-family: var(--font); font-weight: 700; }
+.num, .kpi-value, .score, .rank { font-family: var(--font-display); font-weight: 600; letter-spacing: 0; }
+.kpi-value { font-size: 36px; }
+.page-head .sub { font-size: 14px; }
+
+/* боковая панель */
+.sidebar { background: var(--ink); }
+.sidebar::after { background: none; border: 2px solid rgba(20,168,156,.35); border-radius: 50%; width: 320px; height: 150px; transform: rotate(-12deg); right: -140px; bottom: 70px; }
+.brand { flex-direction: column; align-items: flex-start; gap: 10px; padding: 6px 8px 22px; }
+.brand-logo { width: 150px; height: auto; display: block; }
+.brand-name { font: 600 13px var(--font-display); color: var(--teal); letter-spacing: .08em; }
+.nav-item { border-radius: 999px; font-weight: 600; color: #c9cfcd; }
+.nav-item.active { background: var(--teal); color: var(--ink); }
+.nav-item.active::before { display: none; }
+.nav-item .count { background: var(--lime); color: var(--ink); }
+.nav-item.active .count { background: var(--ink); color: var(--lime); }
+.brand-logo-sm { height: 34px; width: auto; }
+
+/* верхняя панель */
+.topbar { background: rgba(242,241,236,.9); }
+.search-btn { border-radius: 999px; border-color: var(--border-strong); }
+
+/* кнопки-таблетки */
+.btn { border-radius: 999px; font-weight: 700; }
+.btn-primary { background: var(--teal); color: var(--ink); }
+.btn-primary:hover:not(:disabled) { background: var(--teal-dark); color: #fff; }
+.btn-secondary { border: 1.5px solid var(--ink); background: transparent; }
+.btn-secondary:hover:not(:disabled) { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn-success { background: var(--ink); color: var(--lime); }
+.btn-success:hover:not(:disabled) { background: #000; }
+.btn-sm { border-radius: 999px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--ink); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; background: transparent; }
+.pill-ink { background: var(--ink); color: #fff; border-color: var(--ink); }
+.input, .select, .textarea { border-radius: 14px; }
+.select-sm, .input-sm { border-radius: 999px; }
+.chip { border-color: var(--border-strong); font-weight: 600; }
+.chip.on { background: var(--ink); border-color: var(--ink); }
+.seg { background: #e6e4dc; border-radius: 999px; }
+.seg button { border-radius: 999px; }
+.seg button.on { background: var(--ink); color: #fff; box-shadow: none; }
+.tabs button { font-family: var(--font-display); text-transform: uppercase; font-weight: 600; font-size: 15px; letter-spacing: .02em; }
+.tabs button.on { border-color: var(--teal); border-bottom-width: 3px; }
+
+/* карточки */
+.card { border-radius: var(--r-lg); box-shadow: none; }
+.kpi { border-radius: var(--r-lg); }
+.kpi:hover { border-color: var(--ink); box-shadow: none; transform: none; }
+.card-head h2 { font-size: 17px; }
+.bar { background: #e5ece9; }
+.bar > i { background: var(--teal); }
+.list-item:hover { background: #f4f3ee; }
+.tbl th { background: #f4f3ee; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.tbl tbody tr.clickable:hover { background: #eef7f5; }
+.modal, .drawer { border-radius: 26px 0 0 26px; }
+.modal { border-radius: 26px; }
+.modal-head h2, .drawer-body h1 { font-family: var(--font-display); }
+
+/* главный блок — бирюзовый, с рваным краем и обводкой «от руки» */
+.hero { background: var(--teal); color: var(--ink); border-radius: 28px 28px 0 0; padding: 30px 32px 44px; grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); align-items: center; }
+.hero h1 { color: var(--ink); font-size: 54px; font-weight: 700; margin-top: 16px; line-height: .95; }
+.hero .lead { color: rgba(18,21,20,.78); font-size: 15px; }
+.hero-stat b { color: var(--ink); font: 700 40px/1 var(--font-display); }
+.hero-stat b.warn { color: #7a1b10; }
+.hero-stat span { color: rgba(18,21,20,.7); font-weight: 600; text-transform: uppercase; font-size: 11.5px; letter-spacing: .04em; }
+.hero-stat:hover b { color: #fff; }
+.hero-map { background: #fff; border-radius: 22px; padding: 12px 12px 8px; box-shadow: 0 10px 30px rgba(0,0,0,.12); transform: rotate(-1.2deg); }
+.torn { position: relative; overflow: visible; }
+.torn::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 22px; background: var(--ink);
+  clip-path: polygon(0 55%, 3% 20%, 6% 62%, 9% 28%, 12% 70%, 16% 30%, 19% 58%, 23% 18%, 27% 64%, 30% 34%, 34% 72%, 38% 26%, 41% 60%, 45% 22%, 49% 68%, 52% 30%, 56% 62%, 60% 16%, 63% 58%, 67% 28%, 71% 70%, 74% 34%, 78% 64%, 82% 22%, 85% 60%, 89% 30%, 93% 66%, 96% 26%, 100% 52%, 100% 100%, 0 100%);
+}
+.scribble { position: relative; display: inline-block; padding: 0 14px; white-space: nowrap; }
+.scribble-svg { position: absolute; inset: -14% -6% -22% -8%; width: 116%; height: 140%; color: var(--ink); pointer-events: none; }
+
+/* бегущая строка */
+.ticker { background: var(--ink); color: #fff; border-radius: 0 0 28px 28px; overflow: hidden; padding: 12px 0 14px; margin-bottom: 4px; }
+.ticker-track { display: flex; width: max-content; animation: marquee 40s linear infinite; }
+.ticker-track > span { display: flex; }
+.ticker:hover .ticker-track { animation-play-state: paused; }
+.tk-item { display: inline-flex; align-items: center; gap: 10px; font: 600 16px var(--font-display); text-transform: uppercase; letter-spacing: .03em; padding-right: 18px; white-space: nowrap; }
+.tk-item b { color: var(--teal); font-weight: 600; }
+.tk-item i { color: var(--lime); font-style: normal; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
+/* вход */
+.auth-side { background: var(--ink); }
+.auth-side .brand-logo { width: 240px; }
+.auth-claim em { color: var(--teal); }
+.auth-card { border-radius: 26px; }
+
+/* мобильная навигация */
+.bottom-nav { background: var(--ink); }
+.bottom-nav button.active { background: var(--teal); color: var(--ink); }
+.fab { background: var(--teal); color: var(--ink); border-radius: 999px; }
+
+@media (max-width: 900px) {
+  h1 { font-size: 30px; }
+  .hero { padding: 22px 18px 38px; border-radius: 22px 22px 0 0; }
+  .hero h1 { font-size: 38px; }
+  .ticker { border-radius: 0 0 22px 22px; }
+  .hero-map { display: block; transform: none; }
+}

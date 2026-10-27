@@ -103,34 +103,68 @@ export function TaskRow({ t, right }: { t: Task; right?: React.ReactNode }) {
   );
 }
 
-/* ───────── Схема Московской области ───────── */
-const MO_PATH = 'M58,128 L80,92 L112,70 L146,46 L188,34 L226,42 L262,32 L300,50 L330,72 L352,104 L372,140 L362,176 L374,214 L352,248 L322,272 L292,300 L252,292 L216,302 L182,288 L150,274 L120,252 L94,228 L70,204 L48,168 Z';
-const MSK_PATH = 'M190,128 L214,122 L234,138 L232,164 L214,176 L198,170 L188,150 Z M198,170 L178,204 L164,224 L180,230 L202,196 L214,176 Z';
-export function MoMap({ values, onPick, dark }: { values: Record<string, number | null>; onPick: (id: string) => void; dark?: boolean }) {
-  const s = useAppState();
-  const stroke = dark ? 'rgba(127,214,204,.55)' : '#9fc9c2';
+/* ───────── Обводка «от руки», как в логотипе ───────── */
+export function Scribble() {
   return (
-    <svg viewBox="30 20 360 300" role="img" aria-label="Схема Московской области с округами">
-      <defs>
-        <pattern id="grid" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M14 0H0V14" fill="none" stroke={dark ? 'rgba(255,255,255,.04)' : 'rgba(11,59,55,.05)'} /></pattern>
-      </defs>
-      <path d={MO_PATH} fill={dark ? 'rgba(38,174,161,.10)' : '#eef8f6'} stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" />
-      <path d={MO_PATH} fill="url(#grid)" />
-      <path d={MSK_PATH} fill={dark ? 'rgba(255,255,255,.08)' : '#dfe9e7'} stroke={stroke} strokeWidth="1" />
-      <text x="205" y="153" textAnchor="middle" fontSize="8" fill={dark ? '#7fb8b0' : '#7b908d'} style={{ fontWeight: 600 }}>Москва</text>
-      {s.districts.filter((d) => d.pos).map((d) => {
-        const pos = d.pos!;
-        const v = values[d.id];
-        const c = v === null || v === undefined ? '#9aa9a6' : v >= 0.8 ? '#26aea1' : v >= 0.5 ? '#e3a23b' : '#e05a4f';
-        return (
-          <g key={d.id} className="map-dot" tabIndex={0} role="button" aria-label={`${d.name}: выполнение плана ${v === null ? 'нет данных' : Math.round((v ?? 0) * 100) + '%'}`} onClick={() => onPick(d.id)} onKeyDown={(e) => e.key === 'Enter' && onPick(d.id)}>
-            <circle className="halo" cx={pos[0]} cy={pos[1]} r="10" fill={c} opacity=".22" />
-            <circle cx={pos[0]} cy={pos[1]} r="4.5" fill={c} stroke={dark ? '#0b3b37' : '#fff'} strokeWidth="1.5" />
-            <text x={pos[0]} y={pos[1] - 10} textAnchor="middle" fontSize="9.5" fill={dark ? '#e3f4f1' : '#0f2220'} style={{ fontWeight: 700 }}>{d.name}</text>
-          </g>
-        );
-      })}
+    <svg className="scribble-svg" viewBox="0 0 220 90" preserveAspectRatio="none" aria-hidden>
+      <path d="M126 82C92 88 34 86 14 66 -6 46 22 18 74 10 126 2 192 8 208 30 222 50 196 70 150 78 120 83 92 84 70 82" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
     </svg>
+  );
+}
+
+/* ───────── Картограмма Московской области ───────── */
+// Границы 56 городских округов (ТИК, © участники OpenStreetMap), цвет — по избирательному округу 118–129.
+interface MapFeature { tik: string; city: string; okrug: string; label: [number, number]; polygons: number[][][][] }
+interface MapGeo { bbox: [number, number, number, number]; features: MapFeature[] }
+let geoCache: Promise<MapGeo | null> | null = null;
+const loadGeo = () => (geoCache ??= fetch(`${import.meta.env.BASE_URL}mo-map.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+
+export function MoMap({ values, onPick, dark, height }: { values: Record<string, number | null>; onPick: (id: string) => void; dark?: boolean; height?: number }) {
+  const s = useAppState();
+  const [geo, setGeo] = useState<MapGeo | null | undefined>(undefined);
+  const [hover, setHover] = useState<{ f: MapFeature; x: number; y: number } | null>(null);
+  useEffect(() => { loadGeo().then(setGeo); }, []);
+  const proj = useMemo(() => {
+    if (!geo) return null;
+    const [minX, minY, maxX, maxY] = geo.bbox;
+    const k = Math.cos((((minY + maxY) / 2) * Math.PI) / 180);
+    const W = 1000, scale = W / ((maxX - minX) * k), H = Math.round((maxY - minY) * scale);
+    const pt = ([x, y]: number[]) => `${((x - minX) * k * scale).toFixed(1)},${((maxY - y) * scale).toFixed(1)}`;
+    const paths = geo.features.map((f) => ({ f, d: f.polygons.map((poly) => poly.map((ring) => 'M' + ring.map(pt).join('L') + 'Z').join('')).join('') }));
+    // подписи округов — в среднем центре их городов
+    const centers = new Map<string, [number, number, number]>();
+    geo.features.forEach((f) => { const [x, y] = pt(f.label).split(',').map(Number); const c = centers.get(f.okrug) ?? [0, 0, 0]; centers.set(f.okrug, [c[0] + x, c[1] + y, c[2] + 1]); });
+    return { W, H, paths, centers: [...centers].map(([id, [x, y, n]]) => ({ id, x: x / n, y: y / n })) };
+  }, [geo]);
+  if (geo === undefined) return <div className="map-skel" style={{ height: height ?? 260 }} />;
+  if (!geo || !proj) return <div className="small muted">Границы округов не загрузились — обновите страницу.</div>;
+  const fill = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return dark ? 'rgba(255,255,255,.10)' : '#e4e8e7';
+    const t = Math.max(0, Math.min(1, v / 1.1));
+    // светлый бирюзовый → насыщенный бирюзовый
+    const a = [214, 244, 240], b = [11, 150, 140];
+    return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(',')})`;
+  };
+  const dname = (id: string) => { const d = s.districts.find((x) => x.id === id); return d ? `${d.num ?? ''} ${d.name}`.trim() : id; };
+  return (
+    <div className="mo-map" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${proj.W} ${proj.H}`} role="img" aria-label="Картограмма Московской области по избирательным округам" style={height ? { height } : undefined}>
+        {proj.paths.map(({ f, d }) => (
+          <path key={f.tik} d={d} fill={fill(values[f.okrug])} fillRule="evenodd" stroke={dark ? '#0b1614' : '#fff'} strokeWidth="1.2" tabIndex={0} role="button"
+            className={`map-unit ${hover && hover.f.okrug === f.okrug ? 'hl' : ''}`} aria-label={`${f.city}, округ ${dname(f.okrug)}`}
+            onMouseMove={(e) => { const r = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect(); setHover({ f, x: e.clientX - r.left, y: e.clientY - r.top }); }}
+            onFocus={() => setHover({ f, x: 20, y: 20 })} onClick={() => onPick(f.okrug)} onKeyDown={(e) => e.key === 'Enter' && onPick(f.okrug)} />
+        ))}
+        {proj.centers.map((c) => <text key={c.id} x={c.x} y={c.y} className={`map-num ${dark ? 'dark' : ''}`} textAnchor="middle" dominantBaseline="middle">{c.id}</text>)}
+      </svg>
+      {hover && (
+        <div className="map-tip" style={{ left: Math.min(hover.x + 12, 220), top: hover.y + 12 }}>
+          <b>{hover.f.city}</b><span>округ {dname(hover.f.okrug)}</span>
+          <span>план: {values[hover.f.okrug] === null || values[hover.f.okrug] === undefined ? 'нет данных' : Math.round((values[hover.f.okrug] ?? 0) * 100) + '%'}</span>
+        </div>
+      )}
+      <div className="map-legend"><i style={{ background: fill(0.1) }} /><i style={{ background: fill(0.5) }} /><i style={{ background: fill(0.8) }} /><i style={{ background: fill(1.1) }} /><span>выполнение плана: меньше → больше</span><i style={{ background: fill(null) }} /><span>нет задач</span></div>
+    </div>
   );
 }
 

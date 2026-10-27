@@ -36,7 +36,7 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
   const pick = <T,>(res: { data: { data: unknown }[] | null }) => (res.data ?? []).map((x) => x.data as T);
   return {
     users: pick<User>(p),
-    districts: pick<District>(d).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    districts: pick<District>(d).sort((a, b) => (a.num ?? 999) - (b.num ?? 999) || a.name.localeCompare(b.name, 'ru')),
     metrics: pick<Metric>(m),
     tasks: pick<Task>(t),
     events: pick<CalEvent>(e),

@@ -19,6 +19,6 @@ export function useLookup() {
     const districts = new Map(s.districts.map((d) => [d.id, d]));
     const metrics = new Map(s.metrics.map((m) => [m.id, m]));
     const events = new Map(s.events.map((e) => [e.id, e]));
-    return { users, districts, metrics, events, user: (id?: string | null) => (id ? users.get(id) : undefined), dname: (id?: string | null) => (id ? districts.get(id)?.name ?? '—' : 'Вся область') };
+    return { users, districts, metrics, events, user: (id?: string | null) => (id ? users.get(id) : undefined), dname: (id?: string | null) => { if (!id) return 'Вся область'; const d = districts.get(id); return d ? (d.num ? `${d.num} ${d.name}` : d.name) : '—'; } };
   }, [s.users, s.districts, s.metrics, s.events]);
 }

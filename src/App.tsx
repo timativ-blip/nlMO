@@ -85,8 +85,8 @@ function Workspace() {
       <a href="#main" className="sr-only">Перейти к содержимому</a>
       <aside className="sidebar" aria-label="Основная навигация">
         <div className="brand">
-          <div className="brand-mark" aria-hidden>НЛ</div>
-          <div><div className="brand-name">Командный центр</div><div className="brand-sub">Московская область</div></div>
+          <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-light.png`} alt="Новые люди · Московская область" />
+          <div className="brand-name">Командный центр</div>
         </div>
         {NAV.map((n) => (
           <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined}>
@@ -106,7 +106,7 @@ function Workspace() {
       <div className="main">
         {DEMO_MODE && <div className="demo-banner no-print"><FlaskConical size={14} /><span className="demo-long">Деморежим: вымышленные данные хранятся только в этом браузере. Роль можно переключить в меню профиля.</span><span className="demo-short">Деморежим · данные только в этом браузере</span></div>}
         <header className="topbar">
-          <div className="brand-mark mobile-only" aria-hidden style={{ width: 32, height: 32, fontSize: 13 }}>НЛ</div>
+          <img className="brand-logo-sm mobile-only" src={`${import.meta.env.BASE_URL}logo-dark.png`} alt="Новые люди" />
           <button className="search-btn" onClick={() => setSearchOpen(true)} aria-label="Поиск по людям, задачам и округам">
             <Search size={17} /><span className="grow" style={{ textAlign: 'left' }}>Найти человека, задачу, округ</span><span className="kbd">Ctrl K</span>
           </button>
@@ -194,7 +194,7 @@ function ProfileMenu() {
   const L = useLookup();
   const { open, setOpen, ref } = usePopover();
   const personas = useMemo(() => {
-    const istraCoord = s.districts.find((d) => d.id === 'istra')?.coordinatorId;
+    const istraCoord = s.districts.find((d) => d.id === '121')?.coordinatorId;
     const anna = s.users.find((u) => u.name === 'Анна Соколова');
     return [s.users.find((u) => u.role === 'head'), istraCoord ? L.user(istraCoord) : undefined, s.users.find((u) => u.role === 'staff'), anna].filter(Boolean) as typeof s.users;
   }, [s.users, s.districts, L]);
