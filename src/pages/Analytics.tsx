@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, Info, Settings2, Target } from 'lucide-react
 import { Fragment, useMemo, useState } from 'react';
 import { ACTIVE, districtMonthlyPlan, isOverdue, kpis, num, pct, rateDistricts, rateUsers, weeklyTrend, type DistrictScore, type PersonScore } from '../data/calc';
 import * as P from '../data/perm';
-import { updateMetric, updateWeights, useAppState } from '../data/store';
+import { setPdPlan, updateMetric, updateWeights, useAppState } from '../data/store';
 import type { Priority, Weights } from '../data/types';
 import { PRIORITY_LABEL } from '../data/types';
 import { fmtDayMonth, fmtRange } from '../lib/date';
@@ -328,19 +328,29 @@ function OkrugSummary() {
 }
 
 /** План показателей для каждого округа на месяц. Назначает руководство области (руководитель, заместитель, разработчик). */
+const PD = 'pd_posts';
 function DistrictPlans() {
   const s = useAppState();
   const me = useMe();
   const L = useLookup();
   const canEdit = P.canEditWeights(me);
-  const initial = () => Object.fromEntries(s.metrics.map((m) => [m.id, Object.fromEntries(s.districts.map((d) => [d.id, districtMonthlyPlan(m, d.id)]))]));
+  const pdDefault = s.pdPlan?.monthly ?? 100;
+  const initial = () => ({
+    ...Object.fromEntries(s.metrics.map((m) => [m.id, Object.fromEntries(s.districts.map((d) => [d.id, districtMonthlyPlan(m, d.id)]))])),
+    [PD]: Object.fromEntries(s.districts.map((d) => [d.id, s.pdPlan?.districts[d.id] ?? pdDefault])),
+  });
+  // столбцы: показатели задач + посты «Пиши-Делись»
+  const cols = [...s.metrics.map((m) => ({ id: m.id, name: m.name, unit: m.unit, def: m.monthlyPlan })), { id: PD, name: 'Посты «Пиши-Делись»', unit: 'постов', def: pdDefault }];
   const [v, setV] = useState<Record<string, Record<string, number>>>(initial);
   const [dirty, setDirty] = useState(false);
   const set = (mid: string, did: string, x: string) => { setV({ ...v, [mid]: { ...v[mid], [did]: Math.max(0, Math.round(+x || 0)) } }); setDirty(true); };
-  const fillAll = (mid: string) => { const m = s.metrics.find((x) => x.id === mid)!; setV({ ...v, [mid]: Object.fromEntries(s.districts.map((d) => [d.id, m.monthlyPlan])) }); setDirty(true); };
+  const fillAll = (mid: string) => { const c = cols.find((x) => x.id === mid)!; setV({ ...v, [mid]: Object.fromEntries(s.districts.map((d) => [d.id, c.def])) }); setDirty(true); };
   const save = () => {
     // в базе храним только отличия от плана по умолчанию
-    if (run(() => s.metrics.forEach((m) => updateMetric(m.id, { districtPlans: Object.fromEntries(s.districts.filter((d) => v[m.id]?.[d.id] !== m.monthlyPlan).map((d) => [d.id, v[m.id][d.id]])) })), 'План по округам сохранён — выполнение пересчитано')) setDirty(false);
+    if (run(() => {
+      s.metrics.forEach((m) => updateMetric(m.id, { districtPlans: Object.fromEntries(s.districts.filter((d) => v[m.id]?.[d.id] !== m.monthlyPlan).map((d) => [d.id, v[m.id][d.id]])) }));
+      setPdPlan({ monthly: pdDefault, districts: Object.fromEntries(s.districts.filter((d) => v[PD][d.id] !== pdDefault).map((d) => [d.id, v[PD][d.id]])) });
+    }, 'План по округам сохранён — выполнение пересчитано')) setDirty(false);
   };
   return (
     <div className="card">
@@ -350,22 +360,22 @@ function DistrictPlans() {
       </div>
       <div className="card-body table-wrap">
         <table className="tbl plan-tbl">
-          <thead><tr><th>Округ</th>{s.metrics.map((m) => <th key={m.id} className="right">{m.name}<div className="small muted" style={{ fontWeight: 400 }}>{m.unit}</div></th>)}</tr></thead>
+          <thead><tr><th>Округ</th>{cols.map((m) => <th key={m.id} className="right">{m.name}<div className="small muted" style={{ fontWeight: 400 }}>{m.unit}</div></th>)}</tr></thead>
           <tbody>
             {s.districts.map((d) => (
               <tr key={d.id}>
                 <td className="t-title nowrap">{L.dname(d.id)}</td>
-                {s.metrics.map((m) => {
-                  const val = v[m.id]?.[d.id] ?? m.monthlyPlan;
-                  const custom = val !== m.monthlyPlan;
+                {cols.map((m) => {
+                  const val = v[m.id]?.[d.id] ?? m.def;
+                  const custom = val !== m.def;
                   return <td key={m.id} className="right">{canEdit ? <Input type="number" min={0} className={`plan-input ${custom ? 'custom' : ''}`} value={val} onChange={(e) => set(m.id, d.id, e.target.value)} aria-label={`${m.name}, ${L.dname(d.id)}`} /> : <span className={custom ? 'plan-custom' : ''}>{val}</span>}</td>;
                 })}
               </tr>
             ))}
           </tbody>
-          <tfoot><tr><td><b>Вся область</b></td>{s.metrics.map((m) => <td key={m.id} className="right"><b className="num">{s.districts.reduce((a, d) => a + (v[m.id]?.[d.id] ?? m.monthlyPlan), 0)}</b>{canEdit && <div><button type="button" className="link-btn small" onClick={() => fillAll(m.id)}>всем по {m.monthlyPlan}</button></div>}</td>)}</tr></tfoot>
+          <tfoot><tr><td><b>Вся область</b></td>{cols.map((m) => <td key={m.id} className="right"><b className="num">{s.districts.reduce((a, d) => a + (v[m.id]?.[d.id] ?? m.def), 0)}</b>{canEdit && <div><button type="button" className="link-btn small" onClick={() => fillAll(m.id)}>всем по {m.def}</button></div>}</td>)}</tr></tfoot>
         </table>
-        <p className="small muted" style={{ marginBottom: 0 }}>Выделены округа со своим планом, остальные — с планом по умолчанию (меняется в «Настройке весов»). План действует на месяц; для недели и других периодов пересчитывается пропорционально числу дней.</p>
+        <p className="small muted" style={{ marginBottom: 0 }}>Выделены округа со своим планом, остальные — с планом по умолчанию (для задач меняется в «Настройке весов», для постов — 100 в месяц). План постов сравнивается с «Пиши-Делись» на «Пульсе области». План действует на месяц; для недели и других периодов пересчитывается пропорционально числу дней.</p>
       </div>
     </div>
   );

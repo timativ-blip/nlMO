@@ -2,11 +2,11 @@
 // Локальное состояние меняется сразу (как в демо), затем изменённые документы отправляются в базу,
 // где их заново проверяют RLS и триггеры. Ответ сервера (с серверными полями) возвращается в состояние.
 import { sb, FUNCTIONS_URL } from '../lib/supabase';
-import type { AuditItem, CalEvent, DailyReport, District, Metric, Notification, Report, State, Task, User, Weights } from './types';
+import type { AuditItem, Brief, CalEvent, DailyReport, District, Metric, Notification, PdPlan, Report, State, Task, User, Weights } from './types';
 
-type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports';
-export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications' | 'dailyReports';
-export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications', dailyReports: 'daily_reports' };
+type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports' | 'media_briefs';
+export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications' | 'dailyReports' | 'briefs';
+export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications', dailyReports: 'daily_reports', briefs: 'media_briefs' };
 export const COLLECTION_OF: Record<string, Collection> = Object.fromEntries(Object.entries(TABLE_OF).map(([c, t]) => [t, c])) as Record<string, Collection>;
 
 const RLS_MSG = 'Недостаточно прав для этого действия. Обратитесь к координатору или руководителю.';
@@ -20,7 +20,7 @@ export function humanError(message: string) {
 export async function loadAll(uid: string): Promise<Partial<State> & { telegramBot?: string; telegramLinked: boolean }> {
   const db = sb!;
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const [p, d, m, t, e, r, n, s, tl, dr] = await Promise.all([
+  const [p, d, m, t, e, r, n, s, tl, dr, br] = await Promise.all([
     db.from('profiles').select('data'),
     db.from('districts').select('data'),
     db.from('metrics').select('data'),
@@ -31,8 +31,9 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
     db.from('settings').select('key, value'),
     db.from('telegram_links').select('user_id').eq('user_id', uid),
     db.from('daily_reports').select('data').gte('day', since),
+    db.from('media_briefs').select('data').order('created_at', { ascending: false }).limit(60),
   ]);
-  const err = [p, d, m, t, e, r, n, s, dr].find((x) => x.error)?.error;
+  const err = [p, d, m, t, e, r, n, s, dr, br].find((x) => x.error)?.error;
   if (err) throw new Error(humanError(err.message));
   const settings = Object.fromEntries((s.data ?? []).map((x) => [x.key, x.value]));
   const pick = <T,>(res: { data: { data: unknown }[] | null }) => (res.data ?? []).map((x) => x.data as T);
@@ -44,6 +45,8 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
     events: pick<CalEvent>(e),
     reports: pick<Report>(r),
     dailyReports: pick<DailyReport>(dr),
+    briefs: pick<Brief>(br),
+    pdPlan: settings.pd_plan as PdPlan | undefined,
     notifications: pick<Notification>(n),
     weights: settings.weights as Weights,
     telegramBot: settings.telegram?.username,
@@ -60,7 +63,7 @@ export async function loadAudit(): Promise<AuditItem[]> {
 interface Change { table: Table; op: 'insert' | 'update'; id: string; data: unknown; userId?: string }
 
 /** Что изменилось между двумя состояниями — только документы, которые реально отличаются. */
-export function diff(prev: State, next: State, uid: string): { changes: Change[]; weights?: Weights } {
+export function diff(prev: State, next: State, uid: string): { changes: Change[]; weights?: Weights; pdPlan?: PdPlan } {
   const changes: Change[] = [];
   (Object.keys(TABLE_OF) as Collection[]).forEach((c) => {
     const before = new Map((prev[c] as { id: string }[]).map((x) => [x.id, JSON.stringify(x)]));
@@ -74,11 +77,12 @@ export function diff(prev: State, next: State, uid: string): { changes: Change[]
     }
   });
   const weights = JSON.stringify(prev.weights) !== JSON.stringify(next.weights) ? next.weights : undefined;
-  return { changes, weights };
+  const pdPlan = next.pdPlan && JSON.stringify(prev.pdPlan) !== JSON.stringify(next.pdPlan) ? next.pdPlan : undefined;
+  return { changes, weights, pdPlan };
 }
 
 /** Отправить изменения по очереди. Возвращает документы в серверной версии. */
-export async function push(changes: Change[], weights?: Weights) {
+export async function push(changes: Change[], weights?: Weights, pdPlan?: PdPlan) {
   const db = sb!;
   const saved: { table: Table; data: unknown }[] = [];
   for (const ch of changes) {
@@ -98,6 +102,10 @@ export async function push(changes: Change[], weights?: Weights) {
   }
   if (weights) {
     const { error } = await db.from('settings').upsert({ key: 'weights', value: weights });
+    if (error) throw new Error(humanError(error.message));
+  }
+  if (pdPlan) {
+    const { error } = await db.from('settings').upsert({ key: 'pd_plan', value: pdPlan });
     if (error) throw new Error(humanError(error.message));
   }
   return saved;

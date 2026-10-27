@@ -8,6 +8,7 @@ import { go, type Route } from '../lib/router';
 import { MONTHS_NOM, plural } from '../lib/date';
 import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
 import { MoMap } from '../ui/widgets';
+import BriefsView from './Briefs';
 
 type Src = 'vk' | 'tg' | 'youtube' | 'tiktok' | 'instagram' | 'other';
 // [дата, заголовок, канал, источник, автор, баллы, вклад, просмотры, лайки, комм., репосты, избранное, url, засчитан, причина]
@@ -76,7 +77,7 @@ type Calc = ReturnType<typeof compute>;
 
 const SrcIcon = ({ s }: { s: Src }) => <span className={`src-ic src-${s}`} title={SRC_LABEL[s]}>{s === 'vk' ? 'VK' : s === 'tg' ? 'TG' : s === 'youtube' ? 'YT' : s === 'tiktok' ? 'TT' : s === 'instagram' ? 'IG' : '•'}</span>;
 
-type View = 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
+type View = 'brief' | 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
 export default function MediaPage({ route }: { route: Route }) {
   const view = (route.parts[1] as View) || 'dash';
   const pd = useJson<PdData>('media-pd', 60000);
@@ -94,7 +95,7 @@ export default function MediaPage({ route }: { route: Route }) {
     <>
       <div className="page-head">
         <div className="grow"><h1>Медиа</h1><div className="sub">«Пиши-Делись» по округам 118–129 и активность партийных групп</div></div>
-        {view !== 'groups' && month && (
+        {view !== 'groups' && view !== 'brief' && month && (
           <div className="month-switch">
             <Button size="sm" iconOnly icon={ChevronLeft} aria-label="Предыдущий месяц" disabled={mi <= 0} onClick={() => setMonth(months[mi - 1])} />
             <span className="pill">{MONTHS_NOM[mo - 1]} {y}</span>
@@ -103,8 +104,8 @@ export default function MediaPage({ route }: { route: Route }) {
         )}
         <Button size="sm" icon={Info} onClick={() => open('about', '')}>О рейтинге</Button>
       </div>
-      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'dash', label: 'Дашборд' }, { value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
-      {view === 'groups' ? <GroupsView pd={pd.data} /> : pd.error && !pd.data ? (
+      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'brief', label: 'Что публикуем' }, { value: 'dash', label: 'Дашборд' }, { value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
+      {view === 'brief' ? <BriefsView /> : view === 'groups' ? <GroupsView pd={pd.data} /> : pd.error && !pd.data ? (
         <div className="card"><Empty icon={Info} title="Не удалось загрузить данные «Пиши-Делись»" text="Таблица или документ со списком сейчас недоступны. Обновите страницу через пару минут." /></div>
       ) : !A ? <div className="map-skel" style={{ height: 320 }} /> : (
         <>

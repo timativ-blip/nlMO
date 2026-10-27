@@ -10,6 +10,7 @@ import { openEvent, openRecords, openTask } from '../ui/global';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge } from '../ui/kit';
 import { HomeNudges } from '../ui/onboarding';
+import { PulseMini } from './Pulse';
 import { ContextBar, MoMap, Scribble, TaskRow, TrendChart, useScopeDistrict } from '../ui/widgets';
 
 export default function Home() {
@@ -26,6 +27,7 @@ export default function Home() {
         {manager && <ContextBar />}
       </div>
       <HomeNudges />
+      {me.role === 'head' && <PulseMini />}
       {manager ? <ManagerHome /> : null}
       <PersonalBlocks compact={manager} />
     </>

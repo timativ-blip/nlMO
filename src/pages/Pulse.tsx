@@ -5,9 +5,10 @@ import { useMemo, useState } from 'react';
 import { isOverdue, pct, rateDistricts, weeklyTrend } from '../data/calc';
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
-import { addDays, fmtDayMonth, getPeriod, plural, todayISO, WD_SHORT, weekday, weekStart } from '../lib/date';
+import type { PdPlan } from '../data/types';
+import { addDays, fmtDayMonth, getPeriod, monthEnd, plural, todayISO, WD_SHORT, weekday, weekStart } from '../lib/date';
 import { go } from '../lib/router';
-import { useLookup } from '../ui/hooks';
+import { useLookup, useMe } from '../ui/hooks';
 import { Empty, Modal, Segmented } from '../ui/kit';
 import { compute, PostCard, useJson, type GroupsData, type PdData } from './Media';
 
@@ -21,9 +22,9 @@ const lvl = (v: number | null, g: number, y: number, lowerIsBetter = false): Lig
 };
 const heatBg = (t: number | null) => (t === null ? '#eceae4' : `rgba(20,168,156,${0.08 + Math.max(0, Math.min(1, t)) * 0.82})`);
 
-export default function PulsePage() {
+/** Сигналы по округам — общие для страницы «Пульс» и короткой версии на главной */
+export function usePulse() {
   const s = useAppState();
-  const L = useLookup();
   const pd = useJson<PdData>('media-pd', 60000);
   const gr = useJson<GroupsData>('media-groups', 5 * 60000);
   const today = todayISO();
@@ -34,19 +35,23 @@ export default function PulsePage() {
   const period = getPeriod('month');
   const dist = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
   const workdays = useMemo(() => { const out: string[] = []; for (let k = 0; out.length < 5 && k < 10; k++) { const d = addDays(today, -k); if (weekday(d) < 5) out.push(d); } return out; }, [today]);
-
+  // доля месяца, за которую есть данные ПД, — чтобы план постов сравнивать честно
+  const pdShare = useMemo(() => { if (!pd.data || !pdMonth) return 1; const asOf = pdAsOf(pd.data); const last = monthEnd(pdMonth + '-01'); return asOf.slice(0, 7) === pdMonth ? +asOf.slice(8) / +last.slice(8) : 1; }, [pd.data, pdMonth]);
 
   const rows = useMemo(() => s.districts.map((d) => {
     const r = dist.find((x) => x.districtId === d.id);
     const g = A?.groups.find((x) => x.id === d.id);
-        const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
+    const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
     const writing = g && g.roster ? g.mem.filter((a) => a.okPosts).length / g.roster : null;
+    const planPosts = s.pdPlan ? pdPlanFor(s.pdPlan, d.id) * pdShare : 0;
+    const pdPlanPct = g && planPosts ? g.posts / planPosts : null;
     const silent = gr.data ? gr.data.groups.filter((x) => x.okrug === d.id).reduce((n, x) => n + (['vk', 'tg'] as const).filter((k) => { const ch = x[k]; if (!ch || ch.status !== 'ok' || !ch.last) return ch?.status === 'empty'; return (Date.now() - Date.parse(ch.last)) / 864e5 >= 4; }).length, 0) : null;
     const req = s.users.filter((u) => u.active && u.districtId === d.id && P.mustReportDaily(u));
     const dailyShare = req.length ? req.reduce((n, u) => n + workdays.filter((wd) => s.dailyReports.some((x) => x.userId === u.id && x.day === wd)).length, 0) / (req.length * workdays.length) : null;
     const signals: Signal[] = [
       { key: 'plan', label: 'План задач', value: r && r.assigned.length ? pct(r.plan) : '—', light: r && r.assigned.length ? lvl(r.plan, 0.8, 0.5) : 'none', alert: r && r.assigned.length && r.plan < 0.5 ? `план задач выполнен на ${pct(r.plan)}` : undefined, link: `/team/districts/${d.id}` },
       { key: 'overdue', label: 'Просрочки', value: String(overdue), light: lvl(overdue, 0, 3, true), alert: overdue > 3 ? `${overdue} ${plural(overdue, ['просроченная задача', 'просроченные задачи', 'просроченных задач'])}` : undefined, link: `/tasks?overdue=1&district=${d.id}` },
+      { key: 'pdplan', label: 'План постов', value: pdPlanPct === null ? '—' : pct(pdPlanPct), light: lvl(pdPlanPct, 0.9, 0.6), alert: pdPlanPct !== null && pdPlanPct < 0.6 ? `план постов «Пиши-Делись» выполнен на ${pct(pdPlanPct)}` : undefined, link: '/media/okr' },
       { key: 'writing', label: 'Пишут в ПД', value: writing === null ? '—' : pct(writing), light: lvl(writing, 0.7, 0.5), alert: writing !== null && writing < 0.5 ? `пишут только ${pct(writing)} из списка` : undefined, link: '/media/idle' },
       { key: 'groups', label: 'Молчат группы', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа молчит', 'группы молчат', 'групп молчат'])} 4+ дней` : undefined, link: '/media/groups' },
       { key: 'daily', label: 'Отчёты дня', value: dailyShare === null ? '—' : pct(dailyShare), light: lvl(dailyShare, 0.8, 0.5), alert: dailyShare !== null && dailyShare < 0.5 ? `ежедневные отчёты сданы на ${pct(dailyShare)} за 5 рабочих дней` : undefined, link: '/daily' },
@@ -54,12 +59,51 @@ export default function PulsePage() {
     const reds = signals.filter((x) => x.light === 'red').length, yellows = signals.filter((x) => x.light === 'yellow').length;
     const overall: Light = reds >= 2 ? 'red' : reds || yellows >= 2 ? 'yellow' : signals.every((x) => x.light === 'none') ? 'none' : 'green';
     return { d, signals, overall, reds, yellows };
-  }), [s, dist, A, gr.data, workdays]);
+  }), [s, dist, A, gr.data, workdays, pdShare]);
 
-  const order: Record<Light, number> = { red: 0, yellow: 1, green: 2, none: 3 };
-  const alerts = rows.flatMap((r) => r.signals.filter((x) => x.alert).map((x) => ({ d: r.d, x }))).sort((a, b) => order[a.x.light] - order[b.x.light]);
+  const alerts = rows.flatMap((r) => r.signals.filter((x) => x.alert).map((x) => ({ d: r.d, x }))).sort((a, b) => ORDER[a.x.light] - ORDER[b.x.light]);
   const counts = { green: 0, yellow: 0, red: 0, none: 0 } as Record<Light, number>;
   rows.forEach((r) => counts[r.overall]++);
+  const sorted = [...rows].sort((a, b) => ORDER[a.overall] - ORDER[b.overall] || b.reds - a.reds || (a.d.num ?? 0) - (b.d.num ?? 0));
+  return { pd, rows: sorted, alerts, counts };
+}
+const ORDER: Record<Light, number> = { red: 0, yellow: 1, green: 2, none: 3 };
+export const pdPlanFor = (plan: PdPlan, districtId: string) => plan.districts[districtId] ?? plan.monthly;
+
+export function AlertList({ alerts, limit }: { alerts: ReturnType<typeof usePulse>['alerts']; limit: number }) {
+  const L = useLookup();
+  if (!alerts.length) return <Empty icon={CheckCircle2} title="Тревог нет" text="Все округа в норме по задачам, «Пиши-Делись», группам и отчётам." />;
+  return <>{alerts.slice(0, limit).map(({ d, x }, k) => (
+    <button key={k} className="list-item" onClick={() => go(x.link)}>
+      <span className={`ldot ${x.light}`} />
+      <span className="grow"><b>{L.dname(d.id)}</b>: {x.alert}</span>
+      <ArrowRight size={15} className="muted" />
+    </button>
+  ))}</>;
+}
+
+/** Короткий «Пульс» для главной руководителя: 12 округов цветом и 5 главных тревог */
+export function PulseMini() {
+  const L = useLookup();
+  const { rows, alerts, counts } = usePulse();
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head wrap"><h2 className="grow">Пульс области</h2><span className="badge st-done">в норме: {counts.green}</span><span className="badge st-review">внимание: {counts.yellow}</span><span className="badge st-overdue">проблема: {counts.red}</span><a className="btn btn-ghost btn-sm" href="#/pulse">Подробнее<ArrowRight size={15} /></a></div>
+      <div className="card-body">
+        <div className="mini-lights">{rows.map((r) => (
+          <button key={r.d.id} className={`mini-light l-${r.overall}`} onClick={() => go(`/team/districts/${r.d.id}`)} title={r.signals.map((x) => `${x.label}: ${x.value}`).join(' · ')}>
+            <span className={`ldot ${r.overall}`} /><span className="ellipsis">{L.dname(r.d.id)}</span>
+          </button>
+        ))}</div>
+      </div>
+      <div className="card-body" style={{ padding: '0 0 6px', borderTop: '1px solid var(--border)' }}><AlertList alerts={alerts} limit={5} /></div>
+    </div>
+  );
+}
+
+export default function PulsePage() {
+  const L = useLookup();
+  const { pd, rows, alerts, counts } = usePulse();
 
   return (
     <>
@@ -69,7 +113,7 @@ export default function PulsePage() {
       </div>
 
       <div className="lights">
-        {[...rows].sort((a, b) => order[a.overall] - order[b.overall] || b.reds - a.reds || (a.d.num ?? 0) - (b.d.num ?? 0)).map((r) => (
+        {rows.map((r) => (
           <button key={r.d.id} className={`light-card l-${r.overall}`} onClick={() => go(`/team/districts/${r.d.id}`)}>
             <div className="row"><span className={`ldot ${r.overall}`} /><b className="grow ellipsis">{L.dname(r.d.id)}</b><span className="small">{LIGHT_TXT[r.overall]}</span></div>
             <div className="light-signals">{r.signals.map((x) => <span key={x.key} className={`sig ${x.light}`} title={`${x.label}: ${x.value}`}><i />{x.label}<b>{x.value}</b></span>)}</div>
@@ -81,17 +125,12 @@ export default function PulsePage() {
         <div className="card">
           <div className="card-head"><AlertTriangle size={17} /><h2 className="grow">Тревоги</h2><span className="small muted">{alerts.length}</span></div>
           <div className="card-body" style={{ padding: '6px 0' }}>
-            {!alerts.length ? <Empty icon={CheckCircle2} title="Тревог нет" text="Все округа в норме по задачам, «Пиши-Делись», группам и отчётам." /> : alerts.slice(0, 14).map(({ d, x }, k) => (
-              <button key={k} className="list-item" onClick={() => go(x.link)}>
-                <span className={`ldot ${x.light}`} />
-                <span className="grow"><b>{L.dname(d.id)}</b>: {x.alert}</span>
-                <ArrowRight size={15} className="muted" />
-              </button>
-            ))}
+            <AlertList alerts={alerts} limit={14} />
           </div>
         </div>
       </div>
 
+      <HelpSummary />
       <HeatOkrugWeek pd={pd.data} />
       <div className="grid g-2" style={{ marginTop: 16 }}>
         <ActivityCalendar pd={pd.data} />
@@ -298,3 +337,60 @@ function Funnel({ pd }: { pd: PdData | null }) {
   );
 }
 
+
+/* ───────── Нужна помощь: поле «Проблемы» из отчётов дня ───────── */
+// Простая разметка по ключевым словам: видно, где не хватает людей, а где — ресурсов или согласований.
+const HELP_CATS: { key: string; label: string; re: RegExp }[] = [
+  { key: 'people', label: 'Люди и актив', re: /люд|человек|актив|волонт|некому|не хватает рук|замен|отпуск|болеет|болезн/i },
+  { key: 'money', label: 'Деньги и материалы', re: /деньг|бюджет|оплат|печат|листов|материал|раздат|мерч|флаг|баннер|закуп/i },
+  { key: 'place', label: 'Помещение и транспорт', re: /помещен|зал|площадк|транспорт|машин|автобус|доставк|склад/i },
+  { key: 'admin', label: 'Согласования и власти', re: /согласов|администрац|разрешен|уведомлен|полиц|мвд|запрет|отказ/i },
+  { key: 'tech', label: 'Связь и техника', re: /интернет|связ|телефон|ноутбук|сайт|бот|доступ|приложен|соцсет|вк\b|телеграм/i },
+  { key: 'info', label: 'Информация и задачи', re: /непонятн|не ясно|инструкц|информац|сроки|поздно|ответ|не ответ/i },
+];
+function HelpSummary() {
+  const s = useAppState();
+  const me = useMe();
+  const L = useLookup();
+  const from = addDays(todayISO(), -13);
+  const items = s.dailyReports
+    .filter((r) => r.day >= from && r.problems?.trim() && P.canSeeDaily(me, L.user(r.userId)))
+    .map((r) => ({ r, u: L.user(r.userId), cats: HELP_CATS.filter((c) => c.re.test(r.problems)).map((c) => c.key) }))
+    .sort((a, b) => b.r.day.localeCompare(a.r.day));
+  if (!items.length) return null;
+  const okrugOf = (x: (typeof items)[number]) => x.u?.districtId ?? '';
+  const cats = [...HELP_CATS, { key: 'other', label: 'Другое', re: /$^/ }].map((c) => {
+    const hit = items.filter((x) => (c.key === 'other' ? !x.cats.length : x.cats.includes(c.key)));
+    const byOkr = new Map<string, number>(); hit.forEach((x) => byOkr.set(okrugOf(x), (byOkr.get(okrugOf(x)) ?? 0) + 1));
+    return { ...c, n: hit.length, repeat: [...byOkr.entries()].filter(([, n]) => n >= 3).map(([k]) => k) };
+  }).filter((c) => c.n).sort((a, b) => b.n - a.n);
+  const max = Math.max(...cats.map((c) => c.n));
+  return (
+    <div className="grid g-main" style={{ marginTop: 16 }}>
+      <div className="card">
+        <div className="card-head"><h2 className="grow">Нужна помощь</h2><span className="small muted">из отчётов дня · 2 недели</span></div>
+        <div className="card-body" style={{ padding: '6px 0', maxHeight: 420, overflowY: 'auto' }}>
+          {items.slice(0, 30).map((x) => (
+            <div key={x.r.id} className="help-item">
+              <div className="row small"><b className="grow">{x.u?.districtId ? L.dname(x.u.districtId) : 'Штаб'}</b><span className="muted">{x.u?.name} · {fmtDayMonth(x.r.day)}</span></div>
+              <div>{x.r.problems}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head"><h2 className="grow">Что повторяется</h2></div>
+        <div className="card-body col" style={{ gap: 10 }}>
+          {cats.map((c) => (
+            <div key={c.key} className="col" style={{ gap: 4 }}>
+              <div className="row"><span className="grow">{c.label}</span><b className="num">{c.n}</b></div>
+              <span className="help-bar"><i style={{ width: `${(c.n / max) * 100}%` }} /></span>
+              {c.repeat.length > 0 && <span className="small" style={{ color: '#a14a0b' }}>повторяется: {c.repeat.map((k) => (k ? L.dname(k) : 'штаб')).join(', ')}</span>}
+            </div>
+          ))}
+          <p className="small muted" style={{ margin: 0 }}>Тема определяется по словам в тексте. «Повторяется» — 3 и больше сообщений из округа за 2 недели.</p>
+        </div>
+      </div>
+    </div>
+  );
+}

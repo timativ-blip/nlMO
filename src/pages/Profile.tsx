@@ -177,7 +177,7 @@ function DistrictsCard() {
   );
 }
 
-const NOTIFY_LABEL: Record<Notification['kind'], string> = { assign: 'Назначение задачи', deadline: 'Сроки и их изменения', comment: 'Комментарии', review: 'Проверка результата', event: 'Изменения мероприятий', report: 'Отчёты' };
+const NOTIFY_LABEL: Record<Notification['kind'], string> = { assign: 'Назначение задачи', deadline: 'Сроки и их изменения', comment: 'Комментарии', review: 'Проверка результата', event: 'Изменения мероприятий', report: 'Отчёты и сводки', media: 'Шаблоны медиа-штаба и напоминания о постах' };
 
 export function SettingsPage() {
   const s = useAppState();

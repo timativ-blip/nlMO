@@ -4,7 +4,7 @@ import { addDays, todayISO, weekStart, stamp } from '../lib/date';
 import { OKRUGS } from './okrugs';
 import type { CalEvent, District, Metric, Priority, Report, State, Task, TaskStatus, User } from './types';
 
-export const DATA_VERSION = 8;
+export const DATA_VERSION = 9;
 
 function rng(seed: number) {
   return () => {
@@ -288,8 +288,14 @@ export function createSeed(): State {
     }
   }
 
+  const media = users.find((u) => u.name === 'Павел Гришин')!;
+  const briefs: State['briefs'] = [
+    { id: id('br'), authorId: media.id, day: today, title: 'Итоги работы депутатов за октябрь', text: 'Расскажите, что сделали депутаты «Новых людей» в вашем округе за октябрь: одна конкретная история + фото. Обязательно отметьте официальное сообщество округа.\n\nПример: «В Красногорске по обращению жителей отремонтировали детскую площадку на ул. Ленина. Спасибо всем, кто писал!»', link: 'https://vk.com/newpeople_mo', hashtags: '#НовыеЛюди #Подмосковье', createdAt: tsAt(today, 10) },
+    { id: id('br'), authorId: media.id, day: addDays(today, -2), title: 'Субботник в выходные', text: 'Поделитесь анонсом субботника в своём городе: место, время, контакт для записи. После мероприятия — 3–5 фото и короткий итог.', hashtags: '#НовыеЛюди #Субботник', createdAt: tsAt(addDays(today, -2), 11) },
+  ];
+
   return {
-    version: DATA_VERSION, seededAt: now, users, districts, tasks, events, reports, dailyReports, metrics: METRICS,
+    version: DATA_VERSION, seededAt: now, users, districts, tasks, events, reports, dailyReports, briefs, pdPlan: { monthly: 120, districts: { '126': 400, '122': 180 } }, metrics: METRICS,
     notifications: [
       { id: id('n'), userId: anna.id, text: `${coordIstra.name} вернул(а) на доработку: «${returned.title}»`, at: tsAt(addDays(today, -1), 15), read: false, link: `#/tasks/${returned.id}`, kind: 'review' },
       { id: id('n'), userId: head.id, text: 'Областной форум волонтёров: изменено место проведения', at: tsAt(addDays(today, -1), 12), read: false, link: '#/calendar', kind: 'event' },
@@ -301,7 +307,7 @@ export function createSeed(): State {
       priority: { low: 0.5, normal: 1, high: 1.5, urgent: 2 },
       lateFactor: 0.7, minTasks: 3,
     },
-    ui: { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true } },
+    ui: { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true } },
     session: { userId: head.id },
   };
 }

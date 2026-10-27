@@ -163,7 +163,7 @@ export interface Notification {
   at: string;
   read: boolean;
   link: string;
-  kind: 'assign' | 'comment' | 'review' | 'event' | 'report' | 'deadline';
+  kind: 'assign' | 'comment' | 'review' | 'event' | 'report' | 'deadline' | 'media';
 }
 
 export interface AuditItem {
@@ -193,6 +193,11 @@ export interface UiPrefs {
   notify: Record<Notification['kind'], boolean>;
 }
 
+/** Шаблон медиа-штаба «что публикуем»: уходит всей команде в колокольчик и Telegram */
+export interface Brief { id: string; authorId: string; day: string; title: string; text: string; link?: string; hashtags?: string; createdAt: string }
+/** План постов «Пиши-Делись» в месяц: по умолчанию на округ и свой для отдельных округов */
+export interface PdPlan { monthly: number; districts: Record<string, number> }
+
 export interface State {
   version: number;
   seededAt: string;
@@ -202,6 +207,8 @@ export interface State {
   events: CalEvent[];
   reports: Report[];
   dailyReports: DailyReport[];
+  briefs: Brief[];
+  pdPlan?: PdPlan;
   metrics: Metric[];
   notifications: Notification[];
   audit: AuditItem[];

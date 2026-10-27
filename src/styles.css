@@ -756,3 +756,16 @@ button.cal-heat-cell:disabled { cursor: default; }
 .plan-input.custom, .plan-custom { border-color: var(--teal); background: #e9f7f5; font-weight: 700; }
 .plan-custom { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--teal); }
 .link-btn { border: 0; background: none; padding: 0; color: var(--teal-dark); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font: inherit; }
+.section-title { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0; }
+.brief-today { border-left: 5px solid var(--teal); }
+.act-tbl td, .act-tbl th { vertical-align: middle; }
+.act-tbl td:first-child { width: 46%; }
+.help-item { padding: 10px 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.help-item:first-child { border-top: 0; }
+.help-bar { display: block; height: 8px; border-radius: 4px; background: #eceae4; overflow: hidden; }
+.help-bar i { display: block; height: 100%; background: var(--teal); border-radius: 4px; }
+.mini-lights { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.mini-light { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; min-width: 0; }
+.mini-light.l-red { background: #fdf0ee; border-color: #f0c4bd; }
+.mini-light.l-yellow { background: #fdf7e8; border-color: #f0dfb0; }
+.mini-light:hover { border-color: var(--ink); }

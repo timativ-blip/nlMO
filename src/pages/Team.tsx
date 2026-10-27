@@ -11,6 +11,7 @@ import { openEvent, openNewEvent, openNewTask, openRecords } from '../ui/global'
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge, Tabs } from '../ui/kit';
 import { ContextBar, MoMap, TaskRow } from '../ui/widgets';
+import PersonActivity from './PersonActivity';
 import { AddPersonButton, PersonAdminCard, Requests, usePendingRequests } from './TeamAdmin';
 
 export default function TeamPage({ route }: { route: Route }) {
@@ -155,6 +156,7 @@ function PersonPage({ id }: { id: string }) {
         </div>
       </div>
       <PersonAdminCard u={u} />
+      {(me.id === u.id || me.role === 'head' || (me.role === 'coordinator' && me.districtId === u.districtId)) && <PersonActivity u={u} />}
       <div className="grid g-3" style={{ marginTop: 16 }}>
         <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">Активные задачи</span><span className="kpi-value">{active.length}</span><span className="kpi-foot">{active.filter((t) => isOverdue(t)).length} просрочено</span></div>
         <button className="kpi" onClick={() => openRecords({ title: `Подтверждённые результаты: ${u.name}`, rule: 'Задачи, где человек — ответственный, подтверждённые в выбранном периоде.', tasks: done, cellValue: (t) => taskPoints(s, t).toFixed(1) })}><span className="kpi-label">Подтверждено · {period.label.toLowerCase()}</span><span className="kpi-value">{done.length}</span><span className="kpi-foot">Открыть список</span></button>

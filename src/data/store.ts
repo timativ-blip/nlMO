@@ -8,7 +8,7 @@ import { BACKEND, sb } from '../lib/supabase';
 import * as B from './backend';
 import * as P from './perm';
 import { createSeed, DATA_VERSION } from './seed';
-import type { Attachment, CalEvent, Notification, Report, State, Task, TaskResult, UiPrefs, User, Weights } from './types';
+import type { Attachment, Brief, CalEvent, Notification, PdPlan, Report, State, Task, TaskResult, UiPrefs, User, Weights } from './types';
 import { PRIORITY_LABEL, STATUS_LABEL } from './types';
 
 const KEY = 'kc-mo-demo';
@@ -19,10 +19,10 @@ const deny = (msg = 'Недостаточно прав для этого дей�
   throw new AppError(msg);
 };
 
-const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true } };
+const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true } };
 function emptyState(): State {
   return {
-    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], events: [], reports: [], dailyReports: [], metrics: [], notifications: [], audit: [],
+    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], events: [], reports: [], dailyReports: [], briefs: [], metrics: [], notifications: [], audit: [],
     weights: { personCompletion: 40, personOnTime: 30, personVolume: 30, districtPlan: 50, districtCompletion: 25, districtOnTime: 25, priority: { low: 0.5, normal: 1, high: 1.5, urgent: 2 }, lateFactor: 0.7, minTasks: 3 },
     ui: DEFAULT_UI, session: { userId: '' }, extras: {},
   };
@@ -105,13 +105,13 @@ function mutate(fn: (d: State, me: User) => void) {
   fn(draft, me);
   state = draft;
   if (BACKEND) {
-    const { changes, weights } = B.diff(prev, draft, draft.session.userId);
+    const { changes, weights, pdPlan } = B.diff(prev, draft, draft.session.userId);
     // Чужие уведомления отправляются в базу, но в локальном состоянии не хранятся
     state = { ...state, notifications: state.notifications.filter((n) => n.userId === state.session.userId) };
-    if (changes.length || weights) {
+    if (changes.length || weights || pdPlan) {
       setSyncing(+1);
       queue = queue
-        .then(() => B.push(changes, weights))
+        .then(() => B.push(changes, weights, pdPlan))
         .then((saved) => saved.forEach((x) => applyRemote(x.table, x.data)))
         .catch((e: Error) => {
           saveError?.(`Не сохранено: ${e.message}`);
@@ -174,13 +174,14 @@ async function boot(uid: string) {
     if (state.districts.some((d) => can(d.id))) mutate((s) => { ensureReports(s, can); });
     channel?.unsubscribe();
     channel = sb!.channel('kc-live');
-    for (const t of ['tasks', 'events', 'reports', 'profiles', 'districts', 'metrics', 'daily_reports']) {
+    for (const t of ['tasks', 'events', 'reports', 'profiles', 'districts', 'metrics', 'daily_reports', 'media_briefs']) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, (p) => applyRemote(t, (p.new as { data?: unknown })?.data ?? (p.old as { data?: unknown })?.data, p.eventType === 'DELETE'));
     }
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` }, (p) => applyRemote('notifications', (p.new as { data: unknown }).data));
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (p) => {
       const row = p.new as { key: string; value: unknown };
       if (row.key === 'weights') { state = { ...state, weights: row.value as Weights }; emit(); }
+      if (row.key === 'pd_plan') { state = { ...state, pdPlan: row.value as PdPlan }; emit(); }
       if (row.key === 'telegram') { state = { ...state, extras: { ...state.extras, telegramBot: (row.value as { username: string }).username } }; emit(); }
     });
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'telegram_links' }, (p) => {
@@ -743,6 +744,26 @@ export function saveDaily(input: { day: string; done: string; plan: string; prob
     const doc = { id, userId: me.id, day: input.day, done: input.done.trim(), plan: input.plan.trim(), problems: input.problems.trim(), updatedAt: stamp() };
     const i = s.dailyReports.findIndex((r) => r.userId === me.id && r.day === input.day);
     if (i >= 0) s.dailyReports[i] = { ...s.dailyReports[i], ...doc, id: s.dailyReports[i].id }; else s.dailyReports.push(doc);
+  });
+}
+
+/** Медиа-штаб и руководство публикуют шаблон «что публикуем»; в рабочей версии рассылку делает триггер в базе */
+export const canPublishBrief = (u: User) => u.role === 'head' || u.title === 'media';
+export function publishBrief(input: { title: string; text: string; link?: string; hashtags?: string }) {
+  mutate((s, me) => {
+    if (!canPublishBrief(me)) deny('Шаблоны публикует медиа-штаб или руководство области.');
+    if (input.title.trim().length < 3) throw new AppError('Укажите тему публикации.');
+    if (input.text.trim().length < 10) throw new AppError('Добавьте текст шаблона.');
+    const b: Brief = { id: uid('br'), authorId: me.id, day: todayISO(), title: input.title.trim(), text: input.text.trim(), link: input.link?.trim() || undefined, hashtags: input.hashtags?.trim() || undefined, createdAt: stamp() };
+    s.briefs.unshift(b);
+    if (!BACKEND) notify(s, me, s.users.filter((u) => u.active && !u.pending).map((u) => u.id), `Медиа-штаб: что публикуем — «${b.title}»`, '#/media/brief', 'media');
+  });
+}
+export function setPdPlan(plan: PdPlan) {
+  mutate((s, me) => {
+    if (!P.canEditWeights(me)) deny('План постов назначает руководство области.');
+    s.pdPlan = plan;
+    audit(s, me, 'settings', 'pd_plan', 'изменён план постов «Пиши-Делись»');
   });
 }
 

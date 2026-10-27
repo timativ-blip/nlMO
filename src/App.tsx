@@ -166,7 +166,7 @@ function Notifications() {
   const { open, setOpen, ref } = usePopover();
   const today = todayISO();
   const list = useMemo(() => {
-    const stored = s.notifications.filter((n) => n.userId === me.id && s.ui.notify[n.kind]);
+    const stored = s.notifications.filter((n) => n.userId === me.id && s.ui.notify[n.kind] !== false);
     // Напоминания о сроках формируются автоматически из задач
     const deadlines: Notification[] = DEMO_MODE && s.ui.notify.deadline ? s.tasks.filter((t) => t.assigneeId === me.id && (t.status === 'new' || t.status === 'in_progress') && t.due >= today && t.due <= addDays(today, 1)).map((t) => ({ id: `dl-${t.id}`, userId: me.id, text: `Срок ${t.due === today ? 'сегодня' : 'завтра'}: «${t.title}»`, at: new Date().toISOString(), read: true, link: `#/tasks/${t.id}`, kind: 'deadline' as const })) : [];
     return [...deadlines, ...stored].slice(0, 30);
@@ -190,7 +190,7 @@ function Notifications() {
             {list.length === 0 && <div className="small muted" style={{ padding: '16px 14px', borderTop: '1px solid var(--border)' }}>Новых уведомлений нет. Здесь появятся назначения, комментарии, решения по проверке и изменения мероприятий.</div>}
             {list.map((n) => (
               <button key={n.id} className={`notif ${n.read ? '' : 'unread'}`} onClick={() => openLink(n)}>
-                <span className="n-icon">{n.kind === 'event' ? <CalendarDays size={15} /> : n.kind === 'report' ? <FileText size={15} /> : n.kind === 'deadline' ? <Bell size={15} /> : <CheckSquare size={15} />}</span>
+                <span className="n-icon">{n.kind === 'event' ? <CalendarDays size={15} /> : n.kind === 'report' ? <FileText size={15} /> : n.kind === 'deadline' ? <Bell size={15} /> : n.kind === 'media' ? <Megaphone size={15} /> : <CheckSquare size={15} />}</span>
                 <span className="grow"><span className="n-text small" style={{ display: 'block' }}>{n.text}</span><span className="small muted">{n.id.startsWith('dl-') ? 'напоминание' : fmtAgo(n.at)}</span></span>
               </button>
             ))}
