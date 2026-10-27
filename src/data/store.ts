@@ -22,7 +22,7 @@ const deny = (msg = 'Недостаточно прав для этого дей�
 const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true } };
 function emptyState(): State {
   return {
-    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], events: [], reports: [], metrics: [], notifications: [], audit: [],
+    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], events: [], reports: [], dailyReports: [], metrics: [], notifications: [], audit: [],
     weights: { personCompletion: 40, personOnTime: 30, personVolume: 30, districtPlan: 50, districtCompletion: 25, districtOnTime: 25, priority: { low: 0.5, normal: 1, high: 1.5, urgent: 2 }, lateFactor: 0.7, minTasks: 3 },
     ui: DEFAULT_UI, session: { userId: '' }, extras: {},
   };
@@ -174,7 +174,7 @@ async function boot(uid: string) {
     if (state.districts.some((d) => can(d.id))) mutate((s) => { ensureReports(s, can); });
     channel?.unsubscribe();
     channel = sb!.channel('kc-live');
-    for (const t of ['tasks', 'events', 'reports', 'profiles', 'districts', 'metrics']) {
+    for (const t of ['tasks', 'events', 'reports', 'profiles', 'districts', 'metrics', 'daily_reports']) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, (p) => applyRemote(t, (p.new as { data?: unknown })?.data ?? (p.old as { data?: unknown })?.data, p.eventType === 'DELETE'));
     }
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` }, (p) => applyRemote('notifications', (p.new as { data: unknown }).data));
@@ -686,7 +686,7 @@ export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'tit
     if (u.role === 'head' || u.role === 'staff') u.districtId = patch.districtId ?? u.districtId;
     s.districts.forEach((d) => {
       if (d.coordinatorId === id && (u.role !== 'coordinator' || u.districtId !== d.id || !u.active)) d.coordinatorId = null;
-      if (u.role === 'coordinator' && u.active && u.districtId === d.id) d.coordinatorId = id;
+      if (u.role === 'coordinator' && u.title !== 'deputy_coordinator' && u.active && u.districtId === d.id && !d.coordinatorId) d.coordinatorId = id;
     });
   });
 }
@@ -730,6 +730,20 @@ export async function setupBot() {
   state = { ...state, extras: { ...state.extras, telegramBot: r.username } };
   emit();
   return r.username;
+}
+
+/* ───────── Ежедневный отчёт ───────── */
+export function saveDaily(input: { day: string; done: string; plan: string; problems: string }) {
+  mutate((s, me) => {
+    if (me.role === 'member') deny('Ежедневный отчёт заполняют штаб, координаторы и заместители.');
+    if (input.done.trim().length < 10) throw new AppError('Опишите, что сделано за день — хотя бы одно предложение.');
+    if (input.day > todayISO()) throw new AppError('Нельзя заполнить отчёт за будущий день.');
+    if (input.day < addDays(todayISO(), -2)) throw new AppError('Отчёт старше двух дней закрыт для изменений.');
+    const id = `dr_${me.id}_${input.day}`;
+    const doc = { id, userId: me.id, day: input.day, done: input.done.trim(), plan: input.plan.trim(), problems: input.problems.trim(), updatedAt: stamp() };
+    const i = s.dailyReports.findIndex((r) => r.userId === me.id && r.day === input.day);
+    if (i >= 0) s.dailyReports[i] = { ...s.dailyReports[i], ...doc, id: s.dailyReports[i].id }; else s.dailyReports.push(doc);
+  });
 }
 
 export const defaultEventStart = () => `${addDays(todayISO(), 1)}T12:00`;

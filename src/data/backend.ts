@@ -2,11 +2,11 @@
 // Локальное состояние меняется сразу (как в демо), затем изменённые документы отправляются в базу,
 // где их заново проверяют RLS и триггеры. Ответ сервера (с серверными полями) возвращается в состояние.
 import { sb, FUNCTIONS_URL } from '../lib/supabase';
-import type { AuditItem, CalEvent, District, Metric, Notification, Report, State, Task, User, Weights } from './types';
+import type { AuditItem, CalEvent, DailyReport, District, Metric, Notification, Report, State, Task, User, Weights } from './types';
 
-type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications';
-export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications';
-export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications' };
+type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports';
+export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications' | 'dailyReports';
+export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications', dailyReports: 'daily_reports' };
 export const COLLECTION_OF: Record<string, Collection> = Object.fromEntries(Object.entries(TABLE_OF).map(([c, t]) => [t, c])) as Record<string, Collection>;
 
 const RLS_MSG = 'Недостаточно прав для этого действия. Обратитесь к координатору или руководителю.';
@@ -19,7 +19,8 @@ export function humanError(message: string) {
 
 export async function loadAll(uid: string): Promise<Partial<State> & { telegramBot?: string; telegramLinked: boolean }> {
   const db = sb!;
-  const [p, d, m, t, e, r, n, s, tl] = await Promise.all([
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+  const [p, d, m, t, e, r, n, s, tl, dr] = await Promise.all([
     db.from('profiles').select('data'),
     db.from('districts').select('data'),
     db.from('metrics').select('data'),
@@ -29,8 +30,9 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
     db.from('notifications').select('data').eq('user_id', uid).order('created_at', { ascending: false }).limit(200),
     db.from('settings').select('key, value'),
     db.from('telegram_links').select('user_id').eq('user_id', uid),
+    db.from('daily_reports').select('data').gte('day', since),
   ]);
-  const err = [p, d, m, t, e, r, n, s].find((x) => x.error)?.error;
+  const err = [p, d, m, t, e, r, n, s, dr].find((x) => x.error)?.error;
   if (err) throw new Error(humanError(err.message));
   const settings = Object.fromEntries((s.data ?? []).map((x) => [x.key, x.value]));
   const pick = <T,>(res: { data: { data: unknown }[] | null }) => (res.data ?? []).map((x) => x.data as T);
@@ -41,6 +43,7 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
     tasks: pick<Task>(t),
     events: pick<CalEvent>(e),
     reports: pick<Report>(r),
+    dailyReports: pick<DailyReport>(dr),
     notifications: pick<Notification>(n),
     weights: settings.weights as Weights,
     telegramBot: settings.telegram?.username,

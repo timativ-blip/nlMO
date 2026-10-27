@@ -4,7 +4,7 @@ import { addDays, todayISO, weekStart, stamp } from '../lib/date';
 import { OKRUGS } from './okrugs';
 import type { CalEvent, District, Metric, Priority, Report, State, Task, TaskStatus, User } from './types';
 
-export const DATA_VERSION = 7;
+export const DATA_VERSION = 8;
 
 function rng(seed: number) {
   return () => {
@@ -270,8 +270,26 @@ export function createSeed(): State {
     }
   });
 
+  // Заместитель координатора в Красногорском округе (назначен после распределения задач)
+  const depC = users.find((u) => u.districtId === '121' && u.role === 'member' && u.id !== anna.id && u.active);
+  if (depC) { depC.role = 'coordinator'; depC.title = 'deputy_coordinator'; depC.position = 'Заместитель координатора'; }
+  // Ежедневные отчёты за последние две недели (будни)
+  const DONE = ['Провёл(а) встречу с активом, собрал(а) 6 обращений, передал(а) в штаб.', 'Подготовил(а) 2 поста для группы округа, согласовал(а) с медиа-штабом.', 'Обзвонил(а) волонтёров к субботнику, подтвердили 9 человек.', 'Разобрал(а) обращения жителей, по 3 подготовлены ответы.', 'Участвовал(а) в планёрке штаба, обновил(а) план округа на неделю.'];
+  const PLAN = ['Завтра — приём обращений у ДК.', 'Подготовка к мероприятию в субботу.', 'Сбор подписей по детской площадке.', ''];
+  const dailyReports: State['dailyReports'] = [];
+  const required = users.filter((u) => ['staff', 'media', 'coordinator', 'deputy_coordinator', 'deputy'].includes(u.title ?? u.role));
+  for (let k = 13; k >= 0; k--) {
+    const day = addDays(today, -k);
+    const wd = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7;
+    if (wd > 4) continue;
+    for (const u of required) {
+      if (r() > (k === 0 ? 0.45 : 0.82)) continue;
+      dailyReports.push({ id: `dr_${u.id}_${day}`, userId: u.id, day, done: pick(DONE), plan: pick(PLAN), problems: r() < 0.2 ? 'Не хватает людей на выходные.' : '', updatedAt: tsAt(day, 18) });
+    }
+  }
+
   return {
-    version: DATA_VERSION, seededAt: now, users, districts, tasks, events, reports, metrics: METRICS,
+    version: DATA_VERSION, seededAt: now, users, districts, tasks, events, reports, dailyReports, metrics: METRICS,
     notifications: [
       { id: id('n'), userId: anna.id, text: `${coordIstra.name} вернул(а) на доработку: «${returned.title}»`, at: tsAt(addDays(today, -1), 15), read: false, link: `#/tasks/${returned.id}`, kind: 'review' },
       { id: id('n'), userId: head.id, text: 'Областной форум волонтёров: изменено место проведения', at: tsAt(addDays(today, -1), 12), read: false, link: '#/calendar', kind: 'event' },

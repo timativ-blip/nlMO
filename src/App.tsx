@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
+import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -10,6 +10,8 @@ import { fmtAgo, fmtDayMonth, todayISO, addDays } from './lib/date';
 import { go, useRoute } from './lib/router';
 import AnalyticsPage from './pages/Analytics';
 import MediaPage from './pages/Media';
+import DailyPage from './pages/Daily';
+import PulsePage from './pages/Pulse';
 import CalendarPage, { EventDrawer, NewEventModal } from './pages/Calendar';
 import Home from './pages/Home';
 import ImportPage from './pages/Import';
@@ -22,16 +24,19 @@ import { openEvent, openNewTask, openTask } from './ui/global';
 import { useLookup, useMe } from './ui/hooks';
 import { Avatar, Button, Modal, Toaster, toast, usePopover } from './ui/kit';
 import { RecordsModal } from './ui/widgets';
+import { Onboarding } from './ui/onboarding';
 
-const NAV = [
+const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: boolean }[] = [
   { id: 'home', label: 'Главная', icon: HomeIcon },
+  { id: 'pulse', label: 'Пульс области', icon: Activity, staffOnly: true },
   { id: 'tasks', label: 'Задачи', icon: CheckSquare },
   { id: 'calendar', label: 'Календарь', icon: CalendarDays },
   { id: 'team', label: 'Команда', icon: Users },
   { id: 'reports', label: 'Отчёты', icon: FileText },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
   { id: 'media', label: 'Медиа', icon: Megaphone },
-] as const;
+  { id: 'daily', label: 'Отчёт дня', icon: ClipboardCheck, staffOnly: true },
+];
 
 export default function App() {
   const { phase } = usePhase();
@@ -51,7 +56,7 @@ function Workspace() {
   const syncing = useSyncing();
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
   useEffect(() => {
-    const title = NAV.find((n) => n.id === page)?.label ?? (page === 'profile' ? 'Профиль' : page === 'settings' ? 'Настройки' : page === 'import' ? 'Импорт' : '');
+    const title = NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'profile' ? 'Профиль' : page === 'settings' ? 'Настройки' : page === 'import' ? 'Импорт' : '');
     document.title = `${title ? title + ' · ' : ''}Командный центр | Московская область`;
   }, [page]);
   useEffect(() => {
@@ -66,6 +71,8 @@ function Workspace() {
     return () => window.removeEventListener('keydown', onKey);
   }, [me]);
 
+  const NAV = NAV_ALL.filter((n) => !n.staffOnly || me.role !== 'member');
+  const dailyMissing = P.mustReportDaily(me) && !s.dailyReports.some((r) => r.userId === me.id && r.day === todayISO());
   const reviewCount = s.tasks.filter((t) => P.canReview(me, t)).length;
   const myOverdue = s.tasks.filter((t) => (t.assigneeId === me.id || t.coAssigneeIds.includes(me.id)) && isOverdue(t)).length;
 
@@ -77,6 +84,8 @@ function Workspace() {
     case 'reports': content = <ReportsPage route={route} />; break;
     case 'analytics': content = <AnalyticsPage route={route} />; break;
     case 'media': content = <MediaPage route={route} />; break;
+    case 'pulse': content = <PulsePage />; break;
+    case 'daily': content = <DailyPage />; break;
     case 'profile': content = <ProfilePage />; break;
     case 'settings': content = <SettingsPage />; break;
     case 'import': content = <ImportPage />; break;
@@ -94,6 +103,7 @@ function Workspace() {
         {NAV.map((n) => (
           <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined}>
             <n.icon size={19} strokeWidth={2} />{n.label}
+            {n.id === 'daily' && dailyMissing && <span className="count" title="Отчёт за сегодня ещё не сдан">1</span>}
             {n.id === 'tasks' && reviewCount + myOverdue > 0 && <span className="count" title="На проверке у вас и ваши просрочки">{reviewCount + myOverdue}</span>}
           </a>
         ))}
@@ -122,21 +132,22 @@ function Workspace() {
       </div>
 
       <nav className="bottom-nav" aria-label="Навигация">
-        {NAV.slice(0, 4).map((n) => (
+        {NAV.filter((n) => ['home', 'tasks', 'calendar', 'team'].includes(n.id)).map((n) => (
           <button key={n.id} className={page === n.id ? 'active' : ''} onClick={() => go(`/${n.id}`)} aria-current={page === n.id ? 'page' : undefined}><n.icon size={21} />{n.label}</button>
         ))}
-        <button className={['reports', 'analytics', 'media', 'profile', 'settings'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
+        <button className={['pulse', 'daily', 'reports', 'analytics', 'media', 'profile', 'settings'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
       </nav>
       {P.canCreateTask(me) && <button className="fab" aria-label="Новая задача" onClick={() => openNewTask()}><Plus size={26} /></button>}
 
       <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="Разделы">
         <div className="col" style={{ gap: 4 }}>
-          {[{ id: 'reports', label: 'Отчёты', icon: FileText }, { id: 'analytics', label: 'Аналитика и рейтинг', icon: BarChart3 }, { id: 'media', label: 'Медиа: Пиши-Делись и группы', icon: Megaphone }, { id: 'profile', label: 'Профиль', icon: UserIcon }, { id: 'settings', label: 'Настройки и импорт', icon: Settings }].map((n) => (
+          {[...(me.role !== 'member' ? [{ id: 'pulse', label: 'Пульс области', icon: Activity }, { id: 'daily', label: 'Отчёт дня', icon: ClipboardCheck }] : []), { id: 'reports', label: 'Отчёты', icon: FileText }, { id: 'analytics', label: 'Аналитика и рейтинг', icon: BarChart3 }, { id: 'media', label: 'Медиа: Пиши-Делись и группы', icon: Megaphone }, { id: 'profile', label: 'Профиль', icon: UserIcon }, { id: 'settings', label: 'Настройки и импорт', icon: Settings }].map((n) => (
             <button key={n.id} className="menu-item" style={{ minHeight: 48, borderRadius: 10 }} onClick={() => { setMoreOpen(false); go(`/${n.id}`); }}><n.icon size={20} />{n.label}</button>
           ))}
         </div>
       </Modal>
 
+      <Onboarding />
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       <TaskDrawer />
       <EventDrawer />

@@ -1,11 +1,12 @@
 export type Role = 'head' | 'coordinator' | 'staff' | 'member';
 // Роль в команде — что видят коллеги; уровень доступа (role) определяет права.
-export type TeamRole = 'head' | 'developer' | 'deputy' | 'coordinator' | 'staff' | 'media' | 'member' | 'party_member';
+export type TeamRole = 'head' | 'developer' | 'deputy' | 'coordinator' | 'deputy_coordinator' | 'staff' | 'media' | 'member' | 'party_member';
 export const TEAM_ROLES: { key: TeamRole; label: string; access: Role; hint: string }[] = [
   { key: 'head', label: 'Руководитель области', access: 'head', hint: 'все права' },
   { key: 'developer', label: 'Разработчик', access: 'head', hint: 'права руководителя' },
   { key: 'deputy', label: 'Заместитель руководителя', access: 'head', hint: 'права руководителя' },
   { key: 'coordinator', label: 'Координатор округа', access: 'coordinator', hint: 'свой округ' },
+  { key: 'deputy_coordinator', label: 'Заместитель координатора', access: 'coordinator', hint: 'права координатора в своём округе' },
   { key: 'staff', label: 'Штаб', access: 'staff', hint: 'вся область, без подтверждения результатов' },
   { key: 'media', label: 'Медиа-штаб', access: 'staff', hint: 'права штаба' },
   { key: 'member', label: 'Участник команды', access: 'member', hint: 'свои задачи' },
@@ -132,6 +133,19 @@ export interface Report {
   history: HistoryItem[];
 }
 
+/** Ежедневный отчёт о работе (штаб, медиа-штаб, координаторы и заместители) */
+export interface DailyReport {
+  id: string;
+  userId: string;
+  day: string; // YYYY-MM-DD (МСК)
+  done: string;
+  plan: string;
+  problems: string;
+  updatedAt: string;
+}
+/** Кто обязан сдавать ежедневный отчёт */
+export const DAILY_REQUIRED: TeamRole[] = ['staff', 'media', 'coordinator', 'deputy_coordinator', 'deputy'];
+
 export interface Metric {
   id: string;
   name: string;
@@ -186,6 +200,7 @@ export interface State {
   tasks: Task[];
   events: CalEvent[];
   reports: Report[];
+  dailyReports: DailyReport[];
   metrics: Metric[];
   notifications: Notification[];
   audit: AuditItem[];

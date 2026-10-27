@@ -1,6 +1,7 @@
 // Правила доступа. В демо они проверяются в каждом действии хранилища;
 // в рабочей версии те же правила дублируются политиками RLS (supabase/schema.sql).
 import type { CalEvent, Report, State, Task, User } from './types';
+import { DAILY_REQUIRED, teamRoleOf } from './types';
 
 export const isManager = (u: User) => u.role === 'head' || u.role === 'staff';
 export const isInvolved = (u: User, t: Task) => t.assigneeId === u.id || t.coAssigneeIds.includes(u.id) || t.authorId === u.id;
@@ -59,6 +60,12 @@ export const canImport = (u: User) => u.role !== 'member';
 /** Роль и доступ: руководство — для всех; координатор — для участников своего округа (не для себя). */
 export const canManageUser = (actor: User, target: User) =>
   actor.role === 'head' || (actor.role === 'coordinator' && actor.id !== target.id && target.role === 'member' && !!actor.districtId && target.districtId === actor.districtId);
+export const mustReportDaily = (u: User) => DAILY_REQUIRED.includes(teamRoleOf(u));
+export function canSeeDaily(viewer: User, author: User | undefined) {
+  if (!author) return false;
+  if (viewer.id === author.id || viewer.role === 'head') return true;
+  return viewer.role === 'coordinator' && !!viewer.districtId && author.districtId === viewer.districtId;
+}
 export const canEditUser = (actor: User, target: User) => actor.id === target.id || actor.role === 'head';
 
 export function canSeeBirthday(viewer: User, u: User) {

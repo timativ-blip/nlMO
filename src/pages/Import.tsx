@@ -48,6 +48,7 @@ function parseDate(v: unknown): string | null {
 function teamRoleFrom(t: string): TeamRole {
   const x = t.trim().toLowerCase();
   if (/разраб/.test(x)) return 'developer';
+  if (/зам.*координ/.test(x)) return 'deputy_coordinator';
   if (/зам/.test(x)) return 'deputy';
   if (/руковод/.test(x)) return 'head';
   if (/координ/.test(x)) return 'coordinator';

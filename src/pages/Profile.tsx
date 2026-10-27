@@ -1,6 +1,7 @@
-import { Camera, CheckCircle2, Database, Download, KeyRound, MapPin, Plus, RefreshCw, Save, Send, Upload } from 'lucide-react';
+import { Camera, CheckCircle2, Database, Download, KeyRound, MapPin, Plus, RefreshCw, Save, Send, Upload, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import * as P from '../data/perm';
+import { InstallHelp } from '../ui/onboarding';
 import { addDistrict, changePassword, connectTelegram, DEMO_MODE, disconnectTelegram, getState, renameDistrict, resetDemo, setUi, setupBot, updateUser, useAppState } from '../data/store';
 import type { BirthdayVisibility, Notification } from '../data/types';
 import { roleLabel } from '../data/types';
@@ -57,6 +58,7 @@ export function ProfilePage() {
         </div>
       </div>
       {!DEMO_MODE && <div className="grid g-2" style={{ marginTop: 16 }}><TelegramCard /><PasswordCard /></div>}
+      <div className="card card-pad col" style={{ gap: 10, marginTop: 16 }}><h2 className="row"><Smartphone size={18} />Приложение на телефоне</h2><p className="small muted" style={{ margin: 0 }}>Установите командный центр как приложение — иконка на экране, открывается без браузера.</p><InstallHelp /></div>
     </>
   );
 }

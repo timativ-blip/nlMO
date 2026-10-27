@@ -128,7 +128,7 @@ export function Requests() {
     <div className="card">
       {list.map((u) => {
         const hq = u.role !== 'member';
-        const options = TEAM_ROLES.filter((r) => (me.role === 'head' ? (hq ? r.access === 'staff' || r.access === 'head' : r.access === 'member' || r.key === 'coordinator') : r.access === 'member'));
+        const options = TEAM_ROLES.filter((r) => (me.role === 'head' ? (hq ? r.access === 'staff' || r.access === 'head' : r.access === 'member' || r.access === 'coordinator') : r.access === 'member'));
         const pick = choice[u.id] ?? teamRoleOf(u);
         return (
           <div key={u.id} className="req-row">

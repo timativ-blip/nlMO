@@ -8,7 +8,7 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const fail = (error: string, status = 400) => json({ error }, status);
 const ROLES = ['head', 'coordinator', 'staff', 'member'];
-const TITLES = ['head', 'developer', 'deputy', 'coordinator', 'staff', 'media', 'member', 'party_member'];
+const TITLES = ['head', 'developer', 'deputy', 'coordinator', 'deputy_coordinator', 'staff', 'media', 'member', 'party_member'];
 
 function genPassword() {
   const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -35,7 +35,7 @@ async function createPerson(p: NewPerson, password: string, extra: Record<string
   };
   const { error: e2 } = await admin.from('profiles').insert({ id, data: profile });
   if (e2) { await admin.auth.admin.deleteUser(id); throw new Error(e2.message); }
-  if (p.role === 'coordinator' && p.districtId && extra.active !== false) {
+  if (p.role === 'coordinator' && p.title !== 'deputy_coordinator' && p.districtId && extra.active !== false) {
     const { data: d } = await admin.from('districts').select('data').eq('id', p.districtId).single();
     if (d && !d.data.coordinatorId) await admin.from('districts').update({ data: { ...d.data, coordinatorId: id } }).eq('id', p.districtId);
   }
