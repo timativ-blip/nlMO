@@ -1,5 +1,6 @@
 // Первый вход: подключить Telegram-бота (напоминания), установить приложение на телефон,
 // напомнить про ежедневный отчёт. Плюс постоянные подсказки на главной, пока бот не подключён.
+import { firstName } from '../lib/names';
 import { CheckCircle2, ClipboardCheck, Download, Send, Smartphone } from 'lucide-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import * as P from '../data/perm';
@@ -77,7 +78,7 @@ export function Onboarding() {
   const linked = !!s.extras?.telegramLinked;
   const daily = P.mustReportDaily(me);
   return (
-    <Modal open={open} onClose={close} title={`Добро пожаловать, ${me.name.split(' ')[0]}!`} footer={<Button variant="primary" onClick={close}>Понятно, начать работу</Button>}>
+    <Modal open={open} onClose={close} title={`Добро пожаловать, ${firstName(me.name)}!`} footer={<Button variant="primary" onClick={close}>Понятно, начать работу</Button>}>
       <div className="col" style={{ gap: 10 }}>
         <p className="muted" style={{ margin: 0 }}>Три шага, чтобы ничего не пропускать:</p>
         <div className={`onb-step ${linked ? 'done' : ''}`}>

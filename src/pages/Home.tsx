@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, Gift, Inbox, RotateCcw, Sparkles, Target, Timer } from 'lucide-react';
+import { firstName } from '../lib/names';
 import { useMemo } from 'react';
 import { ACTIVE, isOverdue, kpis, num, pct, rateDistricts, weeklyTrend } from '../data/calc';
 import * as P from '../data/perm';
@@ -21,7 +22,7 @@ export default function Home() {
     <>
       <div className="page-head">
         <div className="grow">
-          <h1>{greeting}, {me.name.split(' ')[0]}</h1>
+          <h1>{greeting}, {firstName(me.name)}</h1>
           <div className="sub">{fmtDayLong(todayISO())} · {manager ? 'что происходит, что требует внимания и что делать дальше' : 'ваши задачи и ближайшие события'}</div>
         </div>
         {manager && <ContextBar />}

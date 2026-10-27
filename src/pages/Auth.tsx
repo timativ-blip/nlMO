@@ -1,4 +1,5 @@
 import { AlertTriangle, Clock, LogIn, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react';
+import { firstName } from '../lib/names';
 import { useState } from 'react';
 import { bootstrapHead, register, signIn, signOut, usePhase } from '../data/store';
 import { OKRUGS } from '../data/okrugs';
@@ -36,7 +37,7 @@ export default function AuthGate() {
       <Shell>
         <div className="auth-card col" style={{ gap: 12 }}>
           <div className="badge badge-brand" style={{ alignSelf: 'flex-start' }}><Clock size={13} />Заявка на рассмотрении</div>
-          <h2 style={{ fontSize: 22 }}>{error ? `${error.split(' ')[0]}, заявка отправлена` : 'Заявка отправлена'}</h2>
+          <h2 style={{ fontSize: 22 }}>{error ? `${firstName(error)}, заявка отправлена` : 'Заявка отправлена'}</h2>
           <p className="muted" style={{ margin: 0 }}>Её проверит координатор вашего округа или руководство области. Как только доступ откроют, войдите снова — откроется ваш кабинет.</p>
           <div className="row"><Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>Проверить снова</Button><Button onClick={() => signOut()}>Выйти</Button></div>
         </div>
