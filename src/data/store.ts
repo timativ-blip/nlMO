@@ -560,11 +560,11 @@ export function updateWeights(w: Weights) {
     audit(s, me, 'settings', 'weights', 'изменены веса рейтинга');
   });
 }
-export function updateMetric(id: string, patch: { monthlyPlan?: number; weight?: number }) {
+export function updateMetric(id: string, patch: { monthlyPlan?: number; weight?: number; districtPlans?: Record<string, number> }) {
   mutate((s, me) => {
     if (!P.canEditWeights(me)) deny();
     Object.assign(s.metrics.find((m) => m.id === id)!, patch);
-    audit(s, me, 'metric', id, 'изменён план или вес');
+    audit(s, me, 'metric', id, patch.districtPlans ? 'изменён план по округам' : 'изменён план или вес');
   });
 }
 export function markRead(ids?: string[]) {

@@ -750,3 +750,9 @@ a.gb:hover { border-color: var(--ink); text-decoration: none; }
 button.cal-heat-cell { border: 0; padding: 0; cursor: pointer; font: inherit; transition: transform .1s, box-shadow .1s; }
 button.cal-heat-cell:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--ink); }
 button.cal-heat-cell:disabled { cursor: default; }
+.plan-tbl td, .plan-tbl th { vertical-align: middle; }
+.plan-tbl tfoot td { border-top: 2px solid var(--border); padding-top: 10px; }
+.plan-input { width: 90px; text-align: right; margin-left: auto; height: 34px; }
+.plan-input.custom, .plan-custom { border-color: var(--teal); background: #e9f7f5; font-weight: 700; }
+.plan-custom { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--teal); }
+.link-btn { border: 0; background: none; padding: 0; color: var(--teal-dark); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font: inherit; }

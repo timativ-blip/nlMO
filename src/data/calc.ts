@@ -30,14 +30,17 @@ export interface MetricFact { metric: Metric; plan: number; fact: number; pct: n
  * Для текущего периода на дашбордах (prorate) берутся только прошедшие дни, чтобы темп был сопоставим;
  * в отчёте — полный план недели.
  */
+/** Месячный план показателя для округа: свой, если задан руководством, иначе общий */
+export const districtMonthlyPlan = (m: Metric, districtId: string) => m.districtPlans?.[districtId] ?? m.monthlyPlan;
+
 export function metricFacts(s: State, from: string, to: string, districtId?: string | null, prorate = true): MetricFact[] {
   const today = todayISO();
   const days = Math.max(1, diffDays(prorate && to > today ? today : to, from) + 1);
-  const nDistricts = !districtId || districtId === 'all' ? s.districts.length : 1;
   return s.metrics.map((m) => {
     const records = s.tasks.filter((t) => t.metricId === m.id && confirmedIn(t, from, to) && inScope(t, { districtId }));
     const fact = records.reduce((a, t) => a + (t.result?.value ?? 0), 0);
-    const plan = Math.max(1, Math.round((m.monthlyPlan * nDistricts * days) / 30));
+    const monthly = !districtId || districtId === 'all' ? s.districts.reduce((a, d) => a + districtMonthlyPlan(m, d.id), 0) : districtMonthlyPlan(m, districtId);
+    const plan = Math.max(1, Math.round((monthly * days) / 30));
     return { metric: m, plan, fact, pct: fact / plan, records };
   });
 }

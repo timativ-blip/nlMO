@@ -150,7 +150,8 @@ export interface Metric {
   id: string;
   name: string;
   unit: string;
-  monthlyPlan: number; // план на округ в месяц
+  monthlyPlan: number; // план на округ в месяц по умолчанию
+  districtPlans?: Record<string, number>; // свой месячный план для отдельных округов
   weight: number; // вес в выполнении плана
   description: string;
 }

@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Info, Settings2, Target } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
-import { ACTIVE, isOverdue, kpis, num, pct, rateDistricts, rateUsers, weeklyTrend, type DistrictScore, type PersonScore } from '../data/calc';
+import { ACTIVE, districtMonthlyPlan, isOverdue, kpis, num, pct, rateDistricts, rateUsers, weeklyTrend, type DistrictScore, type PersonScore } from '../data/calc';
 import * as P from '../data/perm';
 import { updateMetric, updateWeights, useAppState } from '../data/store';
 import type { Priority, Weights } from '../data/types';
@@ -72,7 +72,7 @@ function Overview() {
         <div className="card-head"><h2>Показатели</h2></div>
         <div className="card-body grid g-4" style={{ gap: 12 }}>
           {k.facts.map((f) => (
-            <button key={f.metric.id} className="kpi" style={{ background: 'var(--surface-2)' }} onClick={() => openRecords({ title: f.metric.name, rule: `Сумма значений «${f.metric.unit}» из подтверждённых задач, связанных с показателем. План — ${f.metric.monthlyPlan} в месяц на округ, пропорционально периоду.`, tasks: f.records, cellValue: (t) => String(t.result?.value ?? 0) })}>
+            <button key={f.metric.id} className="kpi" style={{ background: 'var(--surface-2)' }} onClick={() => openRecords({ title: f.metric.name, rule: `Сумма значений «${f.metric.unit}» из подтверждённых задач, связанных с показателем. План — сумма планов округов (задаются в «Показатели и правила»), пропорционально периоду.`, tasks: f.records, cellValue: (t) => String(t.result?.value ?? 0) })}>
               <span className="kpi-label">{f.metric.name}</span>
               <span className="kpi-value">{num(f.fact)}<small>/ {f.plan} {f.metric.unit}</small></span>
               <Bar value={f.pct} />
@@ -202,7 +202,7 @@ function WeightsModal({ onClose }: { onClose: () => void }) {
           {metrics.map((m, i) => (
             <div key={m.id} className="grid g-3" style={{ gap: 10, alignItems: 'end', marginBottom: 8 }}>
               <div className="ellipsis" style={{ paddingBottom: 10 }}><b>{m.name}</b></div>
-              <Field label={`План в месяц на округ, ${m.unit}`}><Input type="number" min={1} value={m.monthlyPlan} onChange={(e) => setMetrics(metrics.map((x, j) => (j === i ? { ...x, monthlyPlan: Math.max(1, n(e.target.value)) } : x)))} /></Field>
+              <Field label={`План по умолчанию на округ, ${m.unit}`}><Input type="number" min={1} value={m.monthlyPlan} onChange={(e) => setMetrics(metrics.map((x, j) => (j === i ? { ...x, monthlyPlan: Math.max(1, n(e.target.value)) } : x)))} /></Field>
               <Field label="Вес в плане"><Input type="number" min={0} step={0.5} value={m.weight} onChange={(e) => setMetrics(metrics.map((x, j) => (j === i ? { ...x, weight: n(e.target.value) } : x)))} /></Field>
             </div>
           ))}
@@ -261,10 +261,11 @@ function Metrics() {
           <thead><tr><th>Показатель</th><th>Единица</th><th>Период</th><th>Источник данных</th><th>Правило расчёта</th></tr></thead>
           <tbody>
             {defs.map((d) => <tr key={d.name}><td><b>{d.name}</b></td><td>{d.unit}</td><td>{d.period}</td><td>{d.source}</td><td className="small">{d.rule}</td></tr>)}
-            {s.metrics.map((m) => <tr key={m.id}><td><span className="row"><Target size={14} className="muted" /><b>{m.name}</b></span></td><td>{m.unit}</td><td>месяц · план {m.monthlyPlan} на округ</td><td>Задачи, связанные с показателем</td><td className="small">{m.description} Учитывается после подтверждения. Вес в плане — {m.weight}.</td></tr>)}
+            {s.metrics.map((m) => <tr key={m.id}><td><span className="row"><Target size={14} className="muted" /><b>{m.name}</b></span></td><td>{m.unit}</td><td>месяц · план по округам (ниже)</td><td>Задачи, связанные с показателем</td><td className="small">{m.description} Учитывается после подтверждения. Вес в плане — {m.weight}.</td></tr>)}
           </tbody>
         </table>
       </div>
+      <DistrictPlans />
       <p className="small muted">Сейчас выбран период: {period.label.toLowerCase()} ({fmtDayMonth(period.from)} — {fmtDayMonth(period.to)}). Сравнение с прошлым периодом той же длины.</p>
     </div>
   );
@@ -323,5 +324,49 @@ function OkrugSummary() {
         </table>
       </div>
     </>
+  );
+}
+
+/** План показателей для каждого округа на месяц. Назначает руководство области (руководитель, заместитель, разработчик). */
+function DistrictPlans() {
+  const s = useAppState();
+  const me = useMe();
+  const L = useLookup();
+  const canEdit = P.canEditWeights(me);
+  const initial = () => Object.fromEntries(s.metrics.map((m) => [m.id, Object.fromEntries(s.districts.map((d) => [d.id, districtMonthlyPlan(m, d.id)]))]));
+  const [v, setV] = useState<Record<string, Record<string, number>>>(initial);
+  const [dirty, setDirty] = useState(false);
+  const set = (mid: string, did: string, x: string) => { setV({ ...v, [mid]: { ...v[mid], [did]: Math.max(0, Math.round(+x || 0)) } }); setDirty(true); };
+  const fillAll = (mid: string) => { const m = s.metrics.find((x) => x.id === mid)!; setV({ ...v, [mid]: Object.fromEntries(s.districts.map((d) => [d.id, m.monthlyPlan])) }); setDirty(true); };
+  const save = () => {
+    // в базе храним только отличия от плана по умолчанию
+    if (run(() => s.metrics.forEach((m) => updateMetric(m.id, { districtPlans: Object.fromEntries(s.districts.filter((d) => v[m.id]?.[d.id] !== m.monthlyPlan).map((d) => [d.id, v[m.id][d.id]])) })), 'План по округам сохранён — выполнение пересчитано')) setDirty(false);
+  };
+  return (
+    <div className="card">
+      <div className="card-head wrap">
+        <h2 className="grow">План по округам на месяц</h2>
+        {canEdit ? <><Button variant="ghost" disabled={!dirty} onClick={() => { setV(initial()); setDirty(false); }}>Отменить</Button><Button variant="primary" disabled={!dirty} onClick={save}>Сохранить план</Button></> : <span className="small muted">назначает руководство области</span>}
+      </div>
+      <div className="card-body table-wrap">
+        <table className="tbl plan-tbl">
+          <thead><tr><th>Округ</th>{s.metrics.map((m) => <th key={m.id} className="right">{m.name}<div className="small muted" style={{ fontWeight: 400 }}>{m.unit}</div></th>)}</tr></thead>
+          <tbody>
+            {s.districts.map((d) => (
+              <tr key={d.id}>
+                <td className="t-title nowrap">{L.dname(d.id)}</td>
+                {s.metrics.map((m) => {
+                  const val = v[m.id]?.[d.id] ?? m.monthlyPlan;
+                  const custom = val !== m.monthlyPlan;
+                  return <td key={m.id} className="right">{canEdit ? <Input type="number" min={0} className={`plan-input ${custom ? 'custom' : ''}`} value={val} onChange={(e) => set(m.id, d.id, e.target.value)} aria-label={`${m.name}, ${L.dname(d.id)}`} /> : <span className={custom ? 'plan-custom' : ''}>{val}</span>}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr><td><b>Вся область</b></td>{s.metrics.map((m) => <td key={m.id} className="right"><b className="num">{s.districts.reduce((a, d) => a + (v[m.id]?.[d.id] ?? m.monthlyPlan), 0)}</b>{canEdit && <div><button type="button" className="link-btn small" onClick={() => fillAll(m.id)}>всем по {m.monthlyPlan}</button></div>}</td>)}</tr></tfoot>
+        </table>
+        <p className="small muted" style={{ marginBottom: 0 }}>Выделены округа со своим планом, остальные — с планом по умолчанию (меняется в «Настройке весов»). План действует на месяц; для недели и других периодов пересчитывается пропорционально числу дней.</p>
+      </div>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { ArrowLeft, CalendarDays, FileText, Gift, Mail, MapPin, Phone, Plus, Search, Send, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { ACTIVE, isOverdue, kpis, num, pct, rateDistricts, taskPoints } from '../data/calc';
+import { ACTIVE, isOverdue, kpis, num, pct, rateDistricts, taskPoints, districtMonthlyPlan } from '../data/calc';
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
 import type { Role } from '../data/types';
@@ -209,7 +209,7 @@ function DistrictPage({ id }: { id: string }) {
           </div></div>
           <div className="card"><div className="card-head"><h2>Показатели</h2><span className="small muted">{period.label}</span></div><div className="card-body">
             {k.facts.map((f) => (
-              <button key={f.metric.id} className="hbar-row" style={{ gridTemplateColumns: '170px 1fr 90px' }} onClick={() => openRecords({ title: `${f.metric.name}: ${d.name}`, rule: `Сумма значений из подтверждённых задач, связанных с показателем. План: ${f.metric.monthlyPlan} ${f.metric.unit} в месяц на округ, пропорционально длине периода.`, tasks: f.records, cellValue: (t) => String(t.result?.value ?? 0) })}>
+              <button key={f.metric.id} className="hbar-row" style={{ gridTemplateColumns: '170px 1fr 90px' }} onClick={() => openRecords({ title: `${f.metric.name}: ${d.name}`, rule: `Сумма значений из подтверждённых задач, связанных с показателем. План округа: ${districtMonthlyPlan(f.metric, d.id)} ${f.metric.unit} в месяц (назначает руководство в «Аналитика → Показатели»), пропорционально длине периода.`, tasks: f.records, cellValue: (t) => String(t.result?.value ?? 0) })}>
                 <span className="ellipsis">{f.metric.name}</span>
                 <Bar value={f.pct} />
                 <span className="right small"><b>{num(f.fact)}</b> / {f.plan}</span>
