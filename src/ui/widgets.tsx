@@ -163,7 +163,7 @@ export function MoMap({ values, onPick, dark, height }: { values: Record<string,
           <span>план: {values[hover.f.okrug] === null || values[hover.f.okrug] === undefined ? 'нет данных' : Math.round((values[hover.f.okrug] ?? 0) * 100) + '%'}</span>
         </div>
       )}
-      <div className="map-legend"><i style={{ background: fill(0.1) }} /><i style={{ background: fill(0.5) }} /><i style={{ background: fill(0.8) }} /><i style={{ background: fill(1.1) }} /><span>выполнение плана: меньше → больше</span><i style={{ background: fill(null) }} /><span>нет задач</span></div>
+      <div className="map-legend"><span className="lg"><i style={{ background: fill(0.1) }} /><i style={{ background: fill(0.5) }} /><i style={{ background: fill(0.8) }} /><i style={{ background: fill(1.1) }} />план: меньше → больше</span><span className="lg"><i style={{ background: fill(null) }} />нет задач</span></div>
     </div>
   );
 }
