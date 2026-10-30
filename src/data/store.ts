@@ -4,7 +4,8 @@
 // в Supabase (см. backend.ts), где их перепроверяют RLS и триггеры; при отказе состояние откатывается.
 import { useSyncExternalStore } from 'react';
 import { addDays, nowMsk, stamp, todayISO, weekStart } from '../lib/date';
-import { BACKEND, sb } from '../lib/supabase';
+import { AUTH_STORAGE_KEY, BACKEND, sb } from '../lib/supabase';
+import { withDeadline } from '../lib/deadline';
 import * as B from './backend';
 import * as P from './perm';
 import { createSeed, DATA_VERSION } from './seed';
@@ -90,12 +91,14 @@ export const getState = () => state;
 export type Phase = 'loading' | 'signed-out' | 'setup' | 'ready' | 'error' | 'pending';
 let phase: Phase = BACKEND ? 'loading' : 'ready';
 let phaseError = '';
+let phaseSnapshot: { phase: Phase; error: string } = { phase, error: phaseError };
 const phaseSubs = new Set<() => void>();
-const setPhase = (p: Phase, err = '') => { phase = p; phaseError = err; phaseSubs.forEach((f) => f()); };
-export const usePhase = () => {
-  const p = useSyncExternalStore((f) => { phaseSubs.add(f); return () => { phaseSubs.delete(f); }; }, () => phase);
-  return { phase: p, error: phaseError };
-};
+const setPhase = (p: Phase, err = '') => { phase = p; phaseError = err; phaseSnapshot = { phase: p, error: err }; phaseSubs.forEach((f) => f()); };
+export const getPhase = () => phaseSnapshot;
+export const usePhase = () => useSyncExternalStore((f) => { phaseSubs.add(f); return () => { phaseSubs.delete(f); }; }, getPhase);
+let authGeneration = 0;
+let bootingUserId: string | null = null;
+const CONNECTION_ERROR = 'Сервер команды не ответил вовремя. Проверьте соединение и повторите загрузку. Сохранённые на сервере данные не меняются.';
 
 let queue: Promise<unknown> = Promise.resolve();
 function mutate(fn: (d: State, me: User) => void) {
@@ -142,27 +145,37 @@ function applyRemote(table: string, data: unknown, deleted = false) {
   emit();
 }
 
-async function refresh() {
+async function refresh(signal?: AbortSignal) {
   const uid = state.session.userId;
-  const data = await B.loadAll(uid);
+  const generation = authGeneration;
+  const data = await B.loadAll(uid, signal);
+  if (generation !== authGeneration || uid !== state.session.userId) return;
   const { telegramBot, telegramLinked, ...rest } = data;
   let ui = DEFAULT_UI;
   try { ui = { ...DEFAULT_UI, ...JSON.parse(localStorage.getItem(`kc-ui-${uid}`) || '{}') }; } catch { /* по умолчанию */ }
   state = { ...state, ...rest, weights: rest.weights ?? state.weights, ui, extras: { telegramBot, telegramLinked } } as State;
   const me = state.users.find((u) => u.id === uid);
-  if (me?.role === 'head') state = { ...state, audit: await B.loadAudit() };
+  // Audit is optional: a slow journal must not hold the whole workspace on its loading screen.
+  if (me?.role === 'head') void withDeadline((auditSignal) => B.loadAudit(auditSignal), 8000, CONNECTION_ERROR).then((audit) => {
+    if (generation === authGeneration && uid === state.session.userId) { state = { ...state, audit }; emit(); }
+  }).catch(() => { /* The workspace can be used while the journal is unavailable. */ });
   emit();
   return me;
 }
 
 let channel: ReturnType<NonNullable<typeof sb>['channel']> | null = null;
 async function boot(uid: string) {
+  if (bootingUserId === uid) return;
+  bootingUserId = uid;
+  const generation = ++authGeneration;
   setPhase('loading');
   state = { ...emptyState(), session: { userId: uid } };
   try {
-    const me = await refresh();
+    const me = await withDeadline((signal) => refresh(signal), 15000, CONNECTION_ERROR);
+    if (generation !== authGeneration) return;
     if (!me) {
-      const st = await B.myStatus();
+      const st = await withDeadline((signal) => B.myStatus(signal), 8000, CONNECTION_ERROR);
+      if (generation !== authGeneration) return;
       if (st.pending) { setPhase('pending', st.name ?? ''); return; }
       setPhase('error', st.exists ? 'Ваша учётная запись отключена. Обратитесь к руководителю области или координатору округа.' : 'Учётная запись найдена, но профиль не создан. Обратитесь к руководителю области.');
       return;
@@ -190,24 +203,58 @@ async function boot(uid: string) {
     });
     channel.subscribe();
   } catch (e) {
-    setPhase('error', e instanceof Error ? e.message : 'Не удалось загрузить данные.');
+    if (generation === authGeneration) setPhase('error', e instanceof Error ? e.message : 'Не удалось загрузить данные.');
+  } finally {
+    if (generation === authGeneration) bootingUserId = null;
+  }
+}
+
+async function showEntry() {
+  const generation = authGeneration;
+  // An anonymous visitor can sign in immediately; the first-run probe is only a background check.
+  setPhase('signed-out');
+  try {
+    const { data, error } = await withDeadline((signal) => sb!.rpc('is_initialized').abortSignal(signal), 8000, CONNECTION_ERROR);
+    if (generation !== authGeneration || state.session.userId || phase !== 'signed-out') return;
+    if (error) { setPhase('signed-out', B.humanError(error.message)); return; }
+    if (data === false) setPhase('setup');
+  } catch {
+    if (generation === authGeneration && !state.session.userId && phase === 'signed-out') setPhase('signed-out', CONNECTION_ERROR);
   }
 }
 
 if (BACKEND) {
+  const initialGeneration = authGeneration;
   (async () => {
-    const { data } = await sb!.auth.getSession();
+    const { data, error } = await withDeadline(() => sb!.auth.getSession(), 12000, CONNECTION_ERROR);
+    if (initialGeneration !== authGeneration) return;
+    if (error) throw new Error(B.humanError(error.message));
     if (data.session) return boot(data.session.user.id);
-    const { data: inited } = await sb!.rpc('is_initialized');
-    setPhase(inited === false ? 'setup' : 'signed-out');
-  })().catch(() => setPhase('error', 'Нет связи с сервером. Проверьте интернет и обновите страницу.'));
+    return showEntry();
+  })().catch((error) => { if (initialGeneration === authGeneration) setPhase('error', error instanceof Error ? error.message : CONNECTION_ERROR); });
   sb!.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT') {
-      channel?.unsubscribe(); state = emptyState(); emit();
-      sb!.rpc('is_initialized').then(({ data }) => setPhase(data === false ? 'setup' : 'signed-out'), () => setPhase('signed-out'));
-    }
-    if (event === 'SIGNED_IN' && session && session.user.id !== state.session.userId) boot(session.user.id);
+    // Supabase awaits auth callbacks while holding its session lock. Never start SDK queries there.
+    if (event !== 'SIGNED_OUT' && event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') return;
+    setTimeout(() => {
+      if (event === 'SIGNED_OUT') {
+        ++authGeneration; bootingUserId = null;
+        channel?.unsubscribe(); state = emptyState(); emit();
+        void showEntry();
+      } else if (session && (session.user.id !== state.session.userId || phase !== 'ready')) {
+        void boot(session.user.id);
+      }
+    }, 0);
   });
+}
+
+/** Explicit recovery from a stale local session; does not remove application data or preferences. */
+export function restartSignIn() {
+  if (!AUTH_STORAGE_KEY) return;
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(`${AUTH_STORAGE_KEY}-code-verifier`);
+  } catch { throw new AppError('Не удалось обновить вход. Откройте сайт в новой вкладке браузера.'); }
+  location.reload();
 }
 
 export async function signIn(email: string, password: string) {
