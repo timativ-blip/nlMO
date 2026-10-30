@@ -86,7 +86,7 @@ export function Onboarding() {
           <div className="col grow" style={{ gap: 6 }}>
             <b>Подключите Telegram-бота{s.extras?.telegramBot ? ` @${s.extras.telegramBot}` : ''}</b>
             <span className="small muted">Под своим аккаунтом: бот будет присылать новые задачи, напоминания о сроках{daily ? ', напоминание о ежедневном отчёте в 18:00' : ''} и решения по проверке.</span>
-            {linked ? <span className="small" style={{ color: '#1f8a5f', fontWeight: 600 }}>Подключено</span> : DEMO_MODE ? <span className="small muted">В деморежиме бот не подключается.</span> : <div><Button variant="primary" icon={Send} onClick={openTelegramLink}>Подключить Telegram</Button></div>}
+            {linked ? <span className="small" style={{ color: 'var(--c-done)', fontWeight: 600 }}>Подключено</span> : DEMO_MODE ? <span className="small muted">В деморежиме бот не подключается.</span> : <div><Button variant="primary" icon={Send} onClick={openTelegramLink}>Подключить Telegram</Button></div>}
           </div>
         </div>
         <div className="onb-step">

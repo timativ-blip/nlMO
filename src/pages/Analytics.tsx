@@ -12,8 +12,9 @@ import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Field, Input, Modal, run, Segmented, Tabs, toast } from '../ui/kit';
 import { ContextBar, HBars, TrendChart, useScopeDistrict } from '../ui/widgets';
 import { compute, useJson, type PdData } from './Media';
+import { InsightsOverview, ProcessAnalytics } from './Insights';
 
-type Tab = 'overview' | 'okrugs' | 'rating' | 'load' | 'metrics';
+type Tab = 'overview' | 'processes' | 'okrugs' | 'rating' | 'load' | 'metrics';
 
 export default function AnalyticsPage({ route }: { route: Route }) {
   const tab = (route.parts[1] as Tab) || 'overview';
@@ -23,63 +24,13 @@ export default function AnalyticsPage({ route }: { route: Route }) {
         <div className="grow"><h1>Аналитика</h1><div className="sub">Каждая цифра открывает список записей, из которых она рассчитана</div></div>
         <ContextBar showDistrict={tab !== 'rating' && tab !== 'okrugs'} />
       </div>
-      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'okrugs', label: 'Сводка по округам' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
-      {tab === 'overview' && <Overview />}
+      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'processes', label: 'Процессы' }, { value: 'okrugs', label: 'Сводка по округам' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
+      {tab === 'overview' && <InsightsOverview />}
+      {tab === 'processes' && <ProcessAnalytics />}
       {tab === 'okrugs' && <OkrugSummary />}
       {tab === 'rating' && <Rating />}
       {tab === 'load' && <Load />}
       {tab === 'metrics' && <Metrics />}
-    </>
-  );
-}
-
-function Overview() {
-  const s = useAppState();
-  const period = usePeriod();
-  const districtId = useScopeDistrict();
-  const k = useMemo(() => kpis(s, period.from, period.to, districtId), [s, period, districtId]);
-  const trend = useMemo(() => weeklyTrend(s, 12, districtId), [s, districtId]);
-  const dist = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
-  const Kpi = ({ label, value, unit, rule, src, onClick }: { label: string; value: string; unit: string; rule: string; src: string; onClick: () => void }) => (
-    <button className="kpi" onClick={onClick}>
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value">{value}<small>{unit}</small></span>
-      <span className="kpi-foot" title={rule}><Info size={12} />{src}</span>
-    </button>
-  );
-  return (
-    <>
-      <div className="grid g-4">
-        <Kpi label="Выполнение плана" value={pct(k.plan)} unit="" src="показатели из задач" rule="Взвешенное среднее факт/план по показателям" onClick={() => go('/analytics/metrics')} />
-        <Kpi label="Подтверждённые результаты" value={String(k.confirmed.length)} unit="задач" src="статус «Выполнена»" rule="" onClick={() => openRecords({ title: 'Подтверждённые результаты', rule: 'Задачи, подтверждённые в выбранном периоде (по дате подтверждения).', tasks: k.confirmed })} />
-        <Kpi label="Доля выполненных вовремя" value={k.onTimeShare === null ? '—' : pct(k.onTimeShare)} unit="" src="дата сдачи ≤ срока" rule="" onClick={() => openRecords({ title: 'Сдано вовремя', rule: 'Подтверждённые задачи, результат по которым сдан не позже срока. Доля = эти задачи / все подтверждённые.', tasks: k.onTimeRecords })} />
-        <Kpi label="Просрочки" value={String(k.overdue.length)} unit="задач" src="на текущую дату" rule="" onClick={() => openRecords({ title: 'Просроченные задачи', rule: 'Статус «Новая» или «В работе» и срок раньше сегодняшнего дня (МСК).', tasks: k.overdue })} />
-      </div>
-      <div className="grid g-main" style={{ marginTop: 16 }}>
-        <div className="card">
-          <div className="card-head"><h2 className="grow">Динамика за 12 недель</h2></div>
-          <div className="card-body"><TrendChart data={trend} onPick={(p) => openRecords({ title: `Подтверждено: ${fmtRange(p.from, p.to)}`, tasks: kpis(s, p.from, p.to, districtId).confirmed })} /></div>
-        </div>
-        <div className="card">
-          <div className="card-head"><h2 className="grow">Сравнение округов</h2><span className="small muted">выполнение плана</span></div>
-          <div className="card-body">
-            <HBars rows={dist.map((d) => ({ id: d.districtId, label: d.name, value: d.assigned.length ? d.plan : null, text: d.assigned.length ? pct(d.plan) : '—', onClick: () => go(`/team/districts/${d.districtId}`) }))} />
-            <div className="small muted" style={{ marginTop: 8 }}>Вертикальная отметка — 100 % плана. Период: {period.label.toLowerCase()}.</div>
-          </div>
-        </div>
-      </div>
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-head"><h2>Показатели</h2></div>
-        <div className="card-body grid g-4" style={{ gap: 12 }}>
-          {k.facts.map((f) => (
-            <button key={f.metric.id} className="kpi" style={{ background: 'var(--surface-2)' }} onClick={() => openRecords({ title: f.metric.name, rule: `Сумма значений «${f.metric.unit}» из подтверждённых задач, связанных с показателем. План — сумма планов округов (задаются в «Показатели и правила»), пропорционально периоду.`, tasks: f.records, cellValue: (t) => String(t.result?.value ?? 0) })}>
-              <span className="kpi-label">{f.metric.name}</span>
-              <span className="kpi-value">{num(f.fact)}<small>/ {f.plan} {f.metric.unit}</small></span>
-              <Bar value={f.pct} />
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 }
@@ -225,16 +176,16 @@ function Load() {
   const avg = rows.reduce((a, r) => a + r.t.length, 0) / Math.max(1, rows.length);
   return (
     <div className="card">
-      <div className="card-head"><h2 className="grow">Нагрузка на участников</h2><div className="legend"><span><i style={{ background: '#8a99ad' }} />Новые</span><span><i style={{ background: '#1d5fd1' }} />В работе</span><span><i style={{ background: '#e3a23b' }} />На проверке</span></div></div>
+      <div className="card-head"><h2 className="grow">Нагрузка на участников</h2><div className="legend"><span><i style={{ background: 'var(--chart-new)' }} />Новые</span><span><i style={{ background: 'var(--chart-work)' }} />В работе</span><span><i style={{ background: 'var(--chart-review)' }} />На проверке</span></div></div>
       <div className="card-body">
         <p className="small muted" style={{ marginTop: 0 }}>Активные задачи, где человек — ответственный или соисполнитель. В среднем {num(avg)} на человека; выделены те, у кого больше чем в 1,5 раза выше среднего.</p>
         {rows.map((r) => (
           <button key={r.u.id} className="hbar-row" style={{ gridTemplateColumns: 'minmax(140px, 220px) 1fr 110px' }} onClick={() => openRecords({ title: `Активные задачи: ${r.u.name}`, tasks: r.t })} disabled={!P.isManager(me) && me.role !== 'coordinator' && r.u.id !== me.id}>
             <span className="row"><Avatar user={r.u} size={24} /><span className="ellipsis">{r.u.name}<span className="small muted"> · {L.dname(r.u.districtId)}</span></span></span>
             <span className="stack" style={{ width: `${(r.t.length / max) * 100}%`, minWidth: 6 }}>
-              <i style={{ width: `${(r.n / Math.max(1, r.t.length)) * 100}%`, background: '#8a99ad' }} />
-              <i style={{ width: `${(r.w / Math.max(1, r.t.length)) * 100}%`, background: '#1d5fd1' }} />
-              <i style={{ width: `${(r.r / Math.max(1, r.t.length)) * 100}%`, background: '#e3a23b' }} />
+              <i style={{ width: `${(r.n / Math.max(1, r.t.length)) * 100}%`, background: 'var(--chart-new)' }} />
+              <i style={{ width: `${(r.w / Math.max(1, r.t.length)) * 100}%`, background: 'var(--chart-work)' }} />
+              <i style={{ width: `${(r.r / Math.max(1, r.t.length)) * 100}%`, background: 'var(--chart-review)' }} />
             </span>
             <span className="right small"><b style={{ color: r.t.length > avg * 1.5 ? 'var(--c-danger)' : undefined }}>{r.t.length}</b>{r.o > 0 && <span className="overdue-text"> · {r.o} просроч.</span>}</span>
           </button>

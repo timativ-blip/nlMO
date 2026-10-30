@@ -7,6 +7,7 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
+    "test:analytics": "vite build --ssr src/data/insights.ts --outDir .test-build && node --test tests/insights.test.mjs",
     "test:startup": "vite build --config tests/startup.vite.config.ts --ssr tests/startup-entry.ts --outDir .test-startup && node --test tests/startup.test.mjs"
   },
   "dependencies": {

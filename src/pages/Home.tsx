@@ -12,7 +12,9 @@ import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge } from '../ui/kit';
 import { HomeNudges } from '../ui/onboarding';
 import { PulseMini } from './Pulse';
-import { ContextBar, MoMap, Scribble, TaskRow, TrendChart, useScopeDistrict } from '../ui/widgets';
+import { ContextBar, MoMap, TaskRow, TrendChart, useScopeDistrict } from '../ui/widgets';
+import { AnimatedNumber, ProgressRing } from '../ui/charts';
+import { StatCard } from './Insights';
 
 export default function Home() {
   const me = useMe();
@@ -22,13 +24,13 @@ export default function Home() {
     <>
       <div className="page-head">
         <div className="grow">
+          <span className="eyebrow">Командный центр · Московская область</span>
           <h1>{greeting}, {firstName(me.name)}</h1>
           <div className="sub">{fmtDayLong(todayISO())} · {manager ? 'что происходит, что требует внимания и что делать дальше' : 'ваши задачи и ближайшие события'}</div>
         </div>
         {manager && <ContextBar />}
       </div>
       <HomeNudges />
-      {me.role === 'head' && <PulseMini />}
       {manager ? <ManagerHome /> : null}
       <PersonalBlocks compact={manager} />
     </>
@@ -46,66 +48,38 @@ function ManagerHome() {
   const trend = useMemo(() => weeklyTrend(s, 8, districtId), [s, districtId]);
   const dist = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
   const scopeLabel = districtId ? `округ ${L.dname(districtId)}` : 'вся область';
-  const delta = (a: number | null, b: number | null) => {
-    if (a === null || b === null) return null;
-    const d = Math.round((a - b) * 100);
-    return <span className={d >= 0 ? 'delta-up' : 'delta-down'}>{d >= 0 ? '+' : ''}{d} п.п.</span>;
-  };
   const review = k.review.filter((t) => P.canReview(me, t) || P.isManager(me));
   const myDistricts = me.role === 'coordinator' ? dist.filter((d) => d.districtId === me.districtId) : dist;
 
   return (
     <>
-      <section className="hero torn" aria-label="Обзор">
-        <div className="hero-copy">
-          <span className="pill pill-ink">{period.label} · {scopeLabel}</span>
-          <h1>План выполнен <span className="scribble">{pct(k.plan)}<Scribble /></span></h1>
-          <p className="lead">Подтверждено {k.confirmed.length} {plural(k.confirmed.length, ['результат', 'результата', 'результатов'])}. {k.overdue.length ? `Просрочено задач: ${k.overdue.length} — начните с них.` : 'Просроченных задач нет.'} {review.length ? `Ждут проверки: ${review.length}.` : ''}</p>
-          <div className="hero-stats">
-            <button className="hero-stat" onClick={() => openRecords({ title: 'Подтверждённые результаты', rule: 'Задачи со статусом «Выполнена», подтверждённые в выбранном периоде.', tasks: k.confirmed })}><b>{k.confirmed.length}</b><span>подтверждено</span></button>
-            <button className="hero-stat" onClick={() => openRecords({ title: 'Результаты, сданные вовремя', rule: 'Подтверждённые задачи, результат по которым сдан не позже срока.', tasks: k.onTimeRecords })}><b>{pct(k.onTimeShare)}</b><span>вовремя</span></button>
-            <button className="hero-stat" onClick={() => go('/tasks?overdue=1')}><b className={k.overdue.length ? 'warn' : ''}>{k.overdue.length}</b><span>просрочено</span></button>
-            <button className="hero-stat" onClick={() => openRecords({ title: 'Ожидают проверки', tasks: review })}><b>{review.length}</b><span>на проверке</span></button>
+      <div className="home-bento">
+        <section className="home-headline card" aria-label="Обзор работы">
+          <div className="home-headline-copy">
+            <span className="eyebrow"><span className="live-dot" />{period.label} · {scopeLabel}</span>
+            <h2>Общая картина.<br /><span>Каждый результат на виду.</span></h2>
+            <div className="home-plan"><AnimatedNumber value={k.plan * 100} suffix="%" /><span>плана выполнено</span></div>
+            <p>{k.confirmed.length} подтверждённых результатов. {k.overdue.length ? `${k.overdue.length} задач требуют внимания к срокам.` : 'Все открытые задачи укладываются в срок.'}</p>
+            <div className="row wrap"><Button variant="primary" onClick={() => go('/analytics')} icon={ArrowRight}>Открыть аналитику</Button><Button variant="ghost" onClick={() => openRecords({ title: 'Ожидают проверки', tasks: review })}>{review.length} на проверке</Button></div>
           </div>
-        </div>
-        <div className="hero-map"><MoMap values={Object.fromEntries(dist.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} onPick={(id) => go(`/team/districts/${id}`)} /></div>
-      </section>
-      <div className="ticker" aria-label="Выполнение плана по округам">
-        <div className="ticker-track">
-          {[0, 1].map((k2) => (
-            <span key={k2} aria-hidden={k2 === 1}>
-              {[...dist].sort((a, b) => b.plan - a.plan).map((d) => <span key={d.districtId} className="tk-item"><b>{L.dname(d.districtId)}</b>{d.assigned.length ? pct(d.plan) : '—'}<i>✦</i></span>)}
-            </span>
-          ))}
-        </div>
+          <ProgressRing value={k.plan} label="плана" />
+        </section>
+        <section className="card home-geography"><div className="card-head"><div><span className="eyebrow">12 округов · одна команда</span><h2>Московская область</h2></div><Button size="sm" variant="ghost" icon={ArrowRight} iconOnly aria-label="Открыть округа" onClick={() => go('/team/districts')} /></div><div className="card-body"><MoMap values={Object.fromEntries(dist.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} height={225} onPick={(id) => go(`/team/districts/${id}`)} /></div></section>
       </div>
-
-      <div className="grid g-4" style={{ marginTop: 16 }}>
-        <button className="kpi" onClick={() => go('/analytics')}>
-          <span className="kpi-label"><Target size={15} />Выполнение плана</span>
-          <span className="kpi-value">{pct(k.plan)}</span>
-          <Bar value={k.plan} />
-          <span className="kpi-foot">к прошлому периоду {delta(k.plan, prev.plan)}</span>
-        </button>
-        <button className="kpi" onClick={() => openRecords({ title: 'Подтверждённые результаты', rule: 'Задачи, выполнение которых подтвердил координатор или руководитель в выбранном периоде.', tasks: k.confirmed })}>
-          <span className="kpi-label"><CheckCircle2 size={15} />Подтверждённые результаты</span>
-          <span className="kpi-value">{k.confirmed.length}<small>задач</small></span>
-          <span className="kpi-foot">в прошлом периоде — {prev.confirmed.length}</span>
-        </button>
-        <button className="kpi" onClick={() => openRecords({ title: 'Сдано вовремя', rule: 'Доля подтверждённых задач, по которым результат сдан не позже срока.', tasks: k.onTimeRecords })}>
-          <span className="kpi-label"><Timer size={15} />Вовремя</span>
-          <span className="kpi-value">{k.onTimeShare === null ? <span style={{ fontSize: 16 }}>Недостаточно данных</span> : pct(k.onTimeShare)}</span>
-          <span className="kpi-foot">к прошлому периоду {delta(k.onTimeShare, prev.onTimeShare)}</span>
-        </button>
-        <button className="kpi" onClick={() => openRecords({ title: 'Просроченные задачи', rule: 'Задачи в статусе «Новая» или «В работе», срок которых уже прошёл. Определяется автоматически.', tasks: k.overdue })}>
-          <span className="kpi-label"><AlertTriangle size={15} />Просрочено сейчас</span>
-          <span className="kpi-value" style={{ color: k.overdue.length ? 'var(--c-danger)' : undefined }}>{k.overdue.length}</span>
-          <span className="kpi-foot">на текущую дату</span>
-        </button>
+      <div className="stat-grid">
+        <StatCard label="Подтверждённые результаты" value={k.confirmed.length} icon={CheckCircle2} foot={`В прошлом периоде — ${prev.confirmed.length}`} trend={trend.map((p) => p.confirmed)} onClick={() => openRecords({ title: 'Подтверждённые результаты', rule: 'Задачи, подтверждённые в выбранном периоде.', tasks: k.confirmed })} />
+        <StatCard label="Сдано вовремя" value={k.onTimeShare === null ? null : Math.round(k.onTimeShare * 100)} unit="%" icon={Timer} foot={k.onTimeShare === null ? 'Пока нет подтверждённых результатов' : `${k.onTimeRecords.length} из ${k.confirmed.length} результатов`} onClick={() => openRecords({ title: 'Результаты, сданные вовремя', tasks: k.onTimeRecords })} />
+        <StatCard label="Просрочено сейчас" value={k.overdue.length} icon={AlertTriangle} warning={k.overdue.length > 0} foot="Открытые задачи на текущую дату" onClick={() => openRecords({ title: 'Просроченные задачи', tasks: k.overdue })} />
+        <StatCard label="Ждут проверки" value={review.length} icon={CheckCircle2} foot="Результаты уже сданы командой" onClick={() => openRecords({ title: 'Ожидают проверки', tasks: review })} />
       </div>
+      {me.role === 'head' && <PulseMini />}
 
       <div className="grid g-main" style={{ marginTop: 16 }}>
         <div className="col" style={{ gap: 16 }}>
+          <div className="card">
+            <div className="card-head"><h2 className="grow">Динамика по неделям</h2><span className="small muted">{scopeLabel}</span></div>
+            <div className="card-body"><TrendChart data={trend} onPick={(p) => openRecords({ title: `Подтверждено за неделю с ${fmtDayMonth(p.from)}`, tasks: kpis(s, p.from, p.to, districtId).confirmed })} /></div>
+          </div>
           <div className="card">
             <div className="card-head"><h2 className="grow">Требует внимания</h2><Button size="sm" variant="ghost" onClick={() => go('/tasks?overdue=1')}>Все просрочки <ArrowRight size={14} /></Button></div>
             <div className="card-body" style={{ padding: '8px 0 6px' }}>
@@ -113,10 +87,6 @@ function ManagerHome() {
               {review.slice(0, 4).map((t) => <TaskRow key={t.id} t={t} right={<span className="badge st-review">Проверить</span>} />)}
               {k.overdue.slice(0, 5).map((t) => <TaskRow key={t.id} t={t} />)}
             </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h2 className="grow">Динамика по неделям</h2><span className="small muted">{scopeLabel}</span></div>
-            <div className="card-body"><TrendChart data={trend} onPick={(p) => openRecords({ title: `Подтверждено за неделю с ${fmtDayMonth(p.from)}`, tasks: kpis(s, p.from, p.to, districtId).confirmed })} /></div>
           </div>
         </div>
         <div className="card">

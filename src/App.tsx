@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
+import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -25,6 +25,7 @@ import { useLookup, useMe } from './ui/hooks';
 import { Avatar, Button, Modal, Toaster, toast, usePopover } from './ui/kit';
 import { RecordsModal } from './ui/widgets';
 import { Onboarding } from './ui/onboarding';
+import { ThemeToggle, useTheme } from './ui/appearance';
 
 const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: boolean }[] = [
   { id: 'home', label: 'Главная', icon: HomeIcon },
@@ -41,6 +42,7 @@ const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: b
 export default function App() {
   const { phase } = usePhase();
   useEffect(() => { onSaveError((m) => toast(m, 'error')); }, []);
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('auth-preview')) return <><AuthGate preview /><Toaster /></>;
   if (phase !== 'ready') return <><AuthGate /><Toaster /></>;
   return <Workspace />;
 }
@@ -52,6 +54,9 @@ function Workspace() {
   const s = useAppState();
   const [searchOpen, setSearchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const { resolved: theme } = useTheme();
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('kc-sidebar-collapsed') === '1'; } catch { return false; } });
+  const toggleSidebar = () => { const next = !collapsed; setCollapsed(next); try { localStorage.setItem('kc-sidebar-collapsed', next ? '1' : '0'); } catch { /* optional preference */ } };
 
   const syncing = useSyncing();
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
@@ -93,42 +98,47 @@ function Workspace() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a href="#main" className="sr-only">Перейти к содержимому</a>
       <aside className="sidebar" aria-label="Основная навигация">
         <div className="brand">
-          <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-light.png`} alt="Новые люди · Московская область" />
-          <div className="brand-name">Командный центр</div>
+          <span className="brand-symbol" aria-hidden>нл</span>
+          <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди · Московская область" />
+          <div className="brand-name">Командный центр<span>Московская область</span></div>
         </div>
+        <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
+        <span className="nav-caption">Рабочее пространство</span>
         {NAV.map((n) => (
-          <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined}>
-            <n.icon size={19} strokeWidth={2} />{n.label}
+          <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined} aria-label={n.label} title={collapsed ? n.label : undefined}>
+            <n.icon size={19} strokeWidth={1.8} /><span className="nav-label">{n.label}</span>
             {n.id === 'daily' && dailyMissing && <span className="count" title="Отчёт за сегодня ещё не сдан">1</span>}
             {n.id === 'tasks' && reviewCount + myOverdue > 0 && <span className="count" title="На проверке у вас и ваши просрочки">{reviewCount + myOverdue}</span>}
           </a>
         ))}
         <div className="nav-sep" />
-        <a href="#/profile" className={`nav-item ${page === 'profile' ? 'active' : ''}`}><UserIcon size={19} />Профиль</a>
-        <a href="#/settings" className={`nav-item ${page === 'settings' || page === 'import' ? 'active' : ''}`}><Settings size={19} />Настройки</a>
+        <a href="#/profile" aria-label="Профиль" title={collapsed ? 'Профиль' : undefined} className={`nav-item ${page === 'profile' ? 'active' : ''}`}><UserIcon size={19} /><span className="nav-label">Профиль</span></a>
+        <a href="#/settings" aria-label="Настройки" title={collapsed ? 'Настройки' : undefined} className={`nav-item ${page === 'settings' || page === 'import' ? 'active' : ''}`}><Settings size={19} /><span className="nav-label">Настройки</span></a>
         <div className="side-foot">
-          {DEMO_MODE ? <div className="demo-chip"><FlaskConical size={13} />Деморежим</div> : <div className="small row" style={{ color: '#a9cfc8' }}><span className={`sync-dot ${syncing ? 'busy' : ''}`} />{syncing ? 'Сохраняю…' : 'Всё сохранено'}</div>}
-          <div className="small" style={{ color: '#7fb8b0', marginTop: 8 }}>Время московское · {fmtDayMonth(todayISO())}</div>
+          {DEMO_MODE ? <div className="demo-chip"><FlaskConical size={13} />Деморежим</div> : <div className="small row sync-status"><span className={`sync-dot ${syncing ? 'busy' : ''}`} />{syncing ? 'Сохраняю…' : 'Всё сохранено'}</div>}
+          <div className="small side-date">Время московское · {fmtDayMonth(todayISO())}</div>
         </div>
       </aside>
 
       <div className="main">
         {DEMO_MODE && <div className="demo-banner no-print"><FlaskConical size={14} /><span className="demo-long">Деморежим: вымышленные данные хранятся только в этом браузере. Роль можно переключить в меню профиля.</span><span className="demo-short">Деморежим · данные только в этом браузере</span></div>}
         <header className="topbar">
-          <img className="brand-logo-sm mobile-only" src={`${import.meta.env.BASE_URL}logo-dark.png`} alt="Новые люди" />
+          <div className="section-heading hide-sm"><span>Рабочее пространство</span><b>{NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'profile' ? 'Профиль' : 'Настройки')}</b></div>
+          <img className="brand-logo-sm mobile-only" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди" />
           <button className="search-btn" onClick={() => setSearchOpen(true)} aria-label="Поиск по людям, задачам и округам">
             <Search size={17} /><span className="grow" style={{ textAlign: 'left' }}>Найти человека, задачу, округ</span><span className="kbd">Ctrl K</span>
           </button>
           <span className="spacer hide-sm" />
           {P.canCreateTask(me) && <Button variant="primary" icon={Plus} onClick={() => openNewTask()} className="hide-sm">Задача</Button>}
+          <ThemeToggle />
           <Notifications />
           <ProfileMenu />
         </header>
-        <main id="main" className="content" tabIndex={-1}>{content}</main>
+        <main id="main" className="content" tabIndex={-1}><div className="page-enter" key={page}>{content}</div></main>
       </div>
 
       <nav className="bottom-nav" aria-label="Навигация">

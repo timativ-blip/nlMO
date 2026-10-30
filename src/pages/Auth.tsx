@@ -1,3 +1,4 @@
+import { ThemeToggle } from '../ui/appearance';
 import { AlertTriangle, Clock, LogIn, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react';
 import { firstName } from '../lib/names';
 import { useState } from 'react';
@@ -8,6 +9,7 @@ import { Button, Field, Input, run, Segmented, Select } from '../ui/kit';
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth-wrap">
+      <div className="auth-theme"><ThemeToggle /></div>
       <div className="auth-side" aria-hidden>
         <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-light.png`} alt="Новые люди · Московская область" /><div className="brand-name">Командный центр</div></div>
         <h1 className="auth-claim">Задачи, результаты и общая картина — <em>в одном месте</em></h1>
@@ -17,8 +19,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AuthGate() {
-  const { phase, error } = usePhase();
+export default function AuthGate({ preview = false }: { preview?: boolean }) {
+  const current = usePhase();
+  const { phase, error } = preview ? { phase: 'signed-out', error: '' } : current;
   if (phase === 'loading') return <Shell><div className="auth-card"><div className="spinner" /><p className="muted">Загружаю данные команды…</p></div></Shell>;
   if (phase === 'error')
     return (
@@ -53,9 +56,9 @@ export default function AuthGate() {
 function Entry() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   return (
-    <div className="col" style={{ gap: 14, width: '100%', maxWidth: 440 }}>
+    <div className="auth-entry col" data-mode={mode} style={{ gap: 20, width: '100%', maxWidth: 440 }}>
       <Segmented label="Вход или регистрация" value={mode} onChange={setMode} options={[{ value: 'login', label: 'Вход' }, { value: 'register', label: 'Регистрация' }]} />
-      {mode === 'login' ? <Login /> : <Register />}
+      <div className="auth-form-swap" key={mode}>{mode === 'login' ? <Login /> : <Register />}</div>
     </div>
   );
 }
