@@ -1,7 +1,8 @@
 // Demo media stays local, using the same fictional people as the rest of the demo.
 import { addDays, todayISO } from '../lib/date';
 import type { State } from './types';
-import type { GroupsData, PdData, Post } from '../pages/Media';
+import type { GroupsData, PdData, Post } from './media-types';
+import { MEDIA_SEASONS } from './media-season';
 
 export function demoMedia(name: string, state: State): PdData | GroupsData | null {
   const today = todayISO();
@@ -16,7 +17,7 @@ export function demoMedia(name: string, state: State): PdData | GroupsData | nul
         posts.push([addDays(today,-day),`Демо · ${['Работа команды округа','Встреча с жителями','Результаты недели','Ответы на обращения'][day%4]}`,person,day%3 ? 'vk':'tg',i,Math.round(views/20),1,views,Math.round(views*.06),day%7,day%5,0,'',counted,counted ? '':'Меньше 50 просмотров']);
       }
     });
-    return { groups: [...state.districts.map((d)=>({id:d.id,num:d.num??0,name:d.name})),{id:'hq',num:0,name:'Штаб'}],people,posts,updated:new Date().toISOString() };
+    return { groups: [...state.districts.map((d)=>({id:d.id,num:d.num??0,name:d.name})),{id:'hq',num:0,name:'Штаб'}],people,posts,seasons:MEDIA_SEASONS,updated:new Date().toISOString() };
   }
   if (name === 'media-groups') return { groups: state.districts.flatMap((d,i)=>(d.cities?.slice(0,2)??[d.name]).map((city,j)=>({
     okrug:d.id,city,coord:state.users.find((u)=>u.id===d.coordinatorId)?.name??'Демо-координатор',resp:'Демо-команда',
