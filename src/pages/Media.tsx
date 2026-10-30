@@ -9,6 +9,8 @@ import { MONTHS_NOM, plural } from '../lib/date';
 import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
 import { MoMap } from '../ui/widgets';
 import BriefsView from './Briefs';
+import { DEMO_MODE, getState } from '../data/store';
+import { demoMedia } from '../data/demo-media';
 
 type Src = 'vk' | 'tg' | 'youtube' | 'tiktok' | 'instagram' | 'other';
 // [дата, заголовок, канал, источник, автор, баллы, вклад, просмотры, лайки, комм., репосты, избранное, url, засчитан, причина]
@@ -38,6 +40,7 @@ export function useJson<T>(name: string, everyMs: number) {
   const [error, setError] = useState(false);
   useEffect(() => {
     let alive = true;
+    if (DEMO_MODE) { setData(demoMedia(name, getState()) as T); setError(false); return; }
     const load = () => fetch(`${FUNCTIONS_URL}/${name}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject())).then((d) => { if (alive && !d.error) { setData(d); setError(false); } }).catch(() => alive && setError(true));
     load();
     const t = setInterval(load, everyMs);

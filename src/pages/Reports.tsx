@@ -10,6 +10,7 @@ import { go, type Route } from '../lib/router';
 import { openEvent, openRecords, openTask } from '../ui/global';
 import { useLookup, useMe } from '../ui/hooks';
 import { Avatar, Button, Empty, Field, Modal, ReportBadge, run, Textarea, toast } from '../ui/kit';
+import { DownloadButton } from '../ui/DownloadButton';
 
 export default function ReportsPage({ route }: { route: Route }) {
   if (route.parts[1]) return <ReportView id={route.parts[1]} />;
@@ -28,7 +29,7 @@ function ReportList() {
     <>
       <div className="page-head">
         <div className="grow"><h1>Отчёты</h1><div className="sub">Недельный отчёт округа собирается автоматически из подтверждённых задач и мероприятий</div></div>
-        <Button icon={FileSpreadsheet} onClick={() => exportMany(s, list)} disabled={!list.length}>Сводка в Excel</Button>
+        <DownloadButton icon={FileSpreadsheet} onDownload={() => exportMany(s, list)} disabled={!list.length}>Сводка в Excel</DownloadButton>
       </div>
       {toReview > 0 && <div className="callout warn" style={{ marginBottom: 14 }}><Send size={16} />Ждут вашей проверки: <b>{toReview}</b> <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setStatus('sent')}>Показать</button></div>}
       <div className="toolbar">
@@ -87,8 +88,8 @@ function ReportView({ id }: { id: string }) {
           <div className="sub">Неделя {fmtRange(d.from, d.to)} · координатор {L.user(L.districts.get(r.districtId)?.coordinatorId)?.name}</div>
         </div>
         <div className="row wrap no-print">
-          <Button icon={FileSpreadsheet} onClick={() => exportOne(s, r)}>Excel</Button>
-          <Button icon={Download} onClick={() => exportCsv(s, r)}>CSV</Button>
+          <DownloadButton icon={FileSpreadsheet} onDownload={() => exportOne(s, r)}>Excel</DownloadButton>
+          <DownloadButton onDownload={() => exportCsv(s, r)}>CSV</DownloadButton>
           <Button icon={Printer} onClick={() => window.print()}>PDF / печать</Button>
         </div>
       </div>

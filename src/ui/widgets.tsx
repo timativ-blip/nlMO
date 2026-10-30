@@ -1,3 +1,5 @@
+import { TimelineChart } from './charts';
+import { useTheme } from './appearance';
 import { ExternalLink, FileText, Image as ImageIcon, Link2, Paperclip, Search, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BACKEND } from '../lib/supabase';
@@ -122,6 +124,8 @@ const loadGeo = () => (geoCache ??= fetch(`${import.meta.env.BASE_URL}mo-map.jso
 /** values — доля 0…1.1 для цвета; caption — подпись шкалы; tip — текст значения во всплывающей подсказке */
 export function MoMap({ values, onPick, dark, height, caption = 'план: меньше → больше', tip }: { values: Record<string, number | null>; onPick: (id: string) => void; dark?: boolean; height?: number; caption?: string; tip?: (okrugId: string) => string }) {
   const s = useAppState();
+  const { resolved: theme } = useTheme();
+  const mapDark = dark ?? theme === 'dark';
   const [geo, setGeo] = useState<MapGeo | null | undefined>(undefined);
   const [hover, setHover] = useState<{ f: MapFeature; x: number; y: number } | null>(null);
   useEffect(() => { loadGeo().then(setGeo); }, []);
@@ -140,10 +144,10 @@ export function MoMap({ values, onPick, dark, height, caption = 'план: ме�
   if (geo === undefined) return <div className="map-skel" style={{ height: height ?? 260 }} />;
   if (!geo || !proj) return <div className="small muted">Границы округов не загрузились — обновите страницу.</div>;
   const fill = (v: number | null | undefined) => {
-    if (v === null || v === undefined) return dark ? 'rgba(255,255,255,.10)' : '#e4e8e7';
+    if (v === null || v === undefined) return mapDark ? '#273537' : '#e4eeeb';
     const t = Math.max(0, Math.min(1, v / 1.1));
     // светлый бирюзовый → насыщенный бирюзовый
-    const a = [214, 244, 240], b = [11, 150, 140];
+    const a = mapDark ? [34, 61, 60] : [219, 241, 234], b = mapDark ? [48, 195, 165] : [18, 148, 125];
     return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(',')})`;
   };
   const dname = (id: string) => { const d = s.districts.find((x) => x.id === id); return d ? `${d.num ?? ''} ${d.name}`.trim() : id; };
@@ -151,12 +155,12 @@ export function MoMap({ values, onPick, dark, height, caption = 'план: ме�
     <div className="mo-map" onMouseLeave={() => setHover(null)}>
       <svg viewBox={`0 0 ${proj.W} ${proj.H}`} role="img" aria-label="Картограмма Московской области по избирательным округам" style={height ? { height } : undefined}>
         {proj.paths.map(({ f, d }) => (
-          <path key={f.tik} d={d} fill={fill(values[f.okrug])} fillRule="evenodd" stroke={dark ? '#0b1614' : '#fff'} strokeWidth="1.2" tabIndex={0} role="button"
+          <path key={f.tik} d={d} fill={fill(values[f.okrug])} fillRule="evenodd" stroke={mapDark ? '#141c1e' : '#fff'} strokeWidth="1.2" tabIndex={0} role="button"
             className={`map-unit ${hover && hover.f.okrug === f.okrug ? 'hl' : ''}`} aria-label={`${f.city}, округ ${dname(f.okrug)}`}
             onMouseMove={(e) => { const r = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect(); setHover({ f, x: e.clientX - r.left, y: e.clientY - r.top }); }}
             onFocus={() => setHover({ f, x: 20, y: 20 })} onClick={() => onPick(f.okrug)} onKeyDown={(e) => e.key === 'Enter' && onPick(f.okrug)} />
         ))}
-        {proj.centers.map((c) => <text key={c.id} x={c.x} y={c.y} className={`map-num ${dark ? 'dark' : ''}`} textAnchor="middle" dominantBaseline="middle">{c.id}</text>)}
+        {proj.centers.map((c) => <text key={c.id} x={c.x} y={c.y} className={`map-num ${mapDark ? 'dark' : ''}`} textAnchor="middle" dominantBaseline="middle">{c.id}</text>)}
       </svg>
       {hover && (
         <div className="map-tip" style={{ left: Math.min(hover.x + 12, 220), top: hover.y + 12 }}>
@@ -171,36 +175,7 @@ export function MoMap({ values, onPick, dark, height, caption = 'план: ме�
 
 /* ───────── Графики ───────── */
 export function TrendChart({ data, onPick }: { data: TrendPoint[]; onPick?: (p: TrendPoint) => void }) {
-  const W = 640, H = 210, pl = 30, pr = 36, pt = 12, pb = 26;
-  const maxV = Math.max(4, ...data.map((d) => Math.max(d.assigned, d.confirmed)));
-  const iw = W - pl - pr, ih = H - pt - pb;
-  const bw = iw / data.length;
-  const y = (v: number) => pt + ih - (v / maxV) * ih;
-  const yp = (p: number) => pt + ih - Math.min(p, 1.2) / 1.2 * ih;
-  const line = data.map((d, i) => `${i ? 'L' : 'M'}${pl + bw * i + bw / 2},${yp(d.plan)}`).join(' ');
-  return (
-    <div>
-      <svg className="chart" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Динамика по неделям">
-        {[0, 0.5, 1].map((f) => <g key={f}><line x1={pl} x2={W - pr} y1={pt + ih * (1 - f)} y2={pt + ih * (1 - f)} stroke="#e7eeec" /><text x={pl - 6} y={pt + ih * (1 - f) + 4} textAnchor="end">{Math.round(maxV * f)}</text></g>)}
-        <text x={W - pr + 6} y={yp(1) + 4}>100%</text>
-        <line x1={pl} x2={W - pr} y1={yp(1)} y2={yp(1)} stroke="#0b3b37" strokeDasharray="3 4" opacity=".35" />
-        {data.map((d, i) => {
-          const x = pl + bw * i;
-          return (
-            <g key={d.from} style={{ cursor: onPick ? 'pointer' : undefined }} onClick={() => onPick?.(d)}>
-              <rect x={x + bw * 0.18} y={y(d.assigned)} width={bw * 0.3} height={pt + ih - y(d.assigned)} rx="3" fill="#d9f3ef" />
-              <rect x={x + bw * 0.5} y={y(d.confirmed)} width={bw * 0.3} height={pt + ih - y(d.confirmed)} rx="3" fill="#087e74" />
-              <text x={x + bw / 2} y={H - 8} textAnchor="middle">{fmtDayMonth(d.from)}</text>
-              <rect x={x} y={pt} width={bw} height={ih} fill="transparent"><title>{`Неделя с ${fmtDayMonth(d.from)}: назначено ${d.assigned}, подтверждено ${d.confirmed}, план ${Math.round(d.plan * 100)}%`}</title></rect>
-            </g>
-          );
-        })}
-        <path d={line} fill="none" stroke="#26aea1" strokeWidth="2.5" strokeLinejoin="round" />
-        {data.map((d, i) => <circle key={i} cx={pl + bw * i + bw / 2} cy={yp(d.plan)} r="3.5" fill="#fff" stroke="#26aea1" strokeWidth="2" />)}
-      </svg>
-      <div className="legend"><span><i style={{ background: '#d9f3ef' }} />Назначено (по сроку)</span><span><i style={{ background: '#087e74' }} />Подтверждено</span><span><i style={{ background: '#26aea1', height: 3 }} />Выполнение плана, %</span></div>
-    </div>
-  );
+  return <TimelineChart data={data} onPick={onPick} />;
 }
 
 export function HBars({ rows }: { rows: { id: string; label: string; value: number | null; text: string; onClick: () => void }[] }) {
@@ -212,7 +187,7 @@ export function HBars({ rows }: { rows: { id: string; label: string; value: numb
           <button key={r.id} className="hbar-row" onClick={r.onClick}>
             <span className="ellipsis" style={{ fontWeight: 600 }}>{r.label}</span>
             <span className="hbar-track">
-              <span className="hbar-fill" style={{ display: 'block', width: `${Math.min(v / 1.2, 1) * 100}%`, background: r.value === null ? '#cbd6d3' : v >= 0.8 ? '#087e74' : v >= 0.5 ? '#e3a23b' : '#d9534f' }} />
+              <span className="hbar-fill" style={{ display: 'block', width: `${Math.min(v / 1.2, 1) * 100}%`, background: r.value === null ? 'var(--chart-new)' : v >= 0.8 ? 'var(--teal)' : v >= 0.5 ? 'var(--chart-review)' : 'var(--c-danger)' }} />
               <span className="hbar-target" style={{ left: `${100 / 1.2}%` }} aria-hidden />
             </span>
             <span className="num right" style={{ fontSize: 14 }}>{r.text}</span>

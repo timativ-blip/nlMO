@@ -385,7 +385,7 @@ function HelpSummary() {
             <div key={c.key} className="col" style={{ gap: 4 }}>
               <div className="row"><span className="grow">{c.label}</span><b className="num">{c.n}</b></div>
               <span className="help-bar"><i style={{ width: `${(c.n / max) * 100}%` }} /></span>
-              {c.repeat.length > 0 && <span className="small" style={{ color: '#a14a0b' }}>повторяется: {c.repeat.map((k) => (k ? L.dname(k) : 'штаб')).join(', ')}</span>}
+              {c.repeat.length > 0 && <span className="small" style={{ color: 'var(--c-review)' }}>повторяется: {c.repeat.map((k) => (k ? L.dname(k) : 'штаб')).join(', ')}</span>}
             </div>
           ))}
           <p className="small muted" style={{ margin: 0 }}>Тема определяется по словам в тексте. «Повторяется» — 3 и больше сообщений из округа за 2 недели.</p>

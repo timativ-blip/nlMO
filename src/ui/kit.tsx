@@ -54,6 +54,7 @@ type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'pri
 export function Button({ variant = 'secondary', size = 'md', icon: Icon, iconOnly, className = '', children, ...rest }: BtnProps) {
   return (
     <button type="button" className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''} ${iconOnly ? 'btn-icon' : ''} ${className}`} {...rest}>
+      <svg className="btn-outline" aria-hidden viewBox="0 0 100 40" preserveAspectRatio="none"><rect x="1" y="1" width="98" height="38" rx="13" pathLength="100" /></svg>
       {Icon && <Icon size={size === 'sm' ? 15 : 17} strokeWidth={2.2} aria-hidden />}
       {children}
     </button>

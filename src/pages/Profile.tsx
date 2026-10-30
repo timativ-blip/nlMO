@@ -1,3 +1,4 @@
+import { AppearanceSettings } from '../ui/appearance';
 import { Camera, CheckCircle2, Database, Download, KeyRound, MapPin, Plus, RefreshCw, Save, Send, Upload, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import * as P from '../data/perm';
@@ -187,6 +188,7 @@ export function SettingsPage() {
     <>
       <div className="page-head"><div className="grow"><h1>Настройки</h1></div></div>
       <div className="grid g-2">
+        <AppearanceSettings />
         <div className="card card-pad col" style={{ gap: 10 }}>
           <h2>Уведомления</h2>
           <p className="small muted" style={{ margin: 0 }}>Какие события показывать в колокольчике. Telegram подключается в профиле.</p>

@@ -138,7 +138,7 @@ function DailyHeat({ required }: { required: User[] }) {
   if (!rows.length) return null;
   return (
     <div className="card" style={{ marginTop: 16 }}>
-      <div className="card-head"><h2 className="grow">Дисциплина отчётов · 3 недели</h2><span className="legend"><span><i style={{ background: 'var(--teal)' }} />сдан</span><span><i style={{ background: '#f3d6d3' }} />не сдан</span></span></div>
+      <div className="card-head"><h2 className="grow">Дисциплина отчётов · 3 недели</h2><span className="legend"><span><i style={{ background: 'var(--teal)' }} />сдан</span><span><i style={{ background: 'var(--bg-danger)' }} />не сдан</span></span></div>
       <div className="card-body table-wrap">
         <table className="heatgrid">
           <thead><tr><th />{days.map((d) => <th key={d} title={fmtDayLong(d)}>{+d.slice(8)}</th>)}<th className="right">Сдано</th></tr></thead>
