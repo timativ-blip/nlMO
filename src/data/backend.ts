@@ -17,21 +17,21 @@ export function humanError(message: string) {
   return message;
 }
 
-export async function loadAll(uid: string): Promise<Partial<State> & { telegramBot?: string; telegramLinked: boolean }> {
+export async function loadAll(uid: string, signal = new AbortController().signal): Promise<Partial<State> & { telegramBot?: string; telegramLinked: boolean }> {
   const db = sb!;
   const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
   const [p, d, m, t, e, r, n, s, tl, dr, br] = await Promise.all([
-    db.from('profiles').select('data'),
-    db.from('districts').select('data'),
-    db.from('metrics').select('data'),
-    db.from('tasks').select('data'),
-    db.from('events').select('data'),
-    db.from('reports').select('data'),
-    db.from('notifications').select('data').eq('user_id', uid).order('created_at', { ascending: false }).limit(200),
-    db.from('settings').select('key, value'),
-    db.from('telegram_links').select('user_id').eq('user_id', uid),
-    db.from('daily_reports').select('data').gte('day', since),
-    db.from('media_briefs').select('data').order('created_at', { ascending: false }).limit(60),
+    db.from('profiles').select('data').abortSignal(signal),
+    db.from('districts').select('data').abortSignal(signal),
+    db.from('metrics').select('data').abortSignal(signal),
+    db.from('tasks').select('data').abortSignal(signal),
+    db.from('events').select('data').abortSignal(signal),
+    db.from('reports').select('data').abortSignal(signal),
+    db.from('notifications').select('data').eq('user_id', uid).order('created_at', { ascending: false }).limit(200).abortSignal(signal),
+    db.from('settings').select('key, value').abortSignal(signal),
+    db.from('telegram_links').select('user_id').eq('user_id', uid).abortSignal(signal),
+    db.from('daily_reports').select('data').gte('day', since).abortSignal(signal),
+    db.from('media_briefs').select('data').order('created_at', { ascending: false }).limit(60).abortSignal(signal),
   ]);
   const err = [p, d, m, t, e, r, n, s, dr, br].find((x) => x.error)?.error;
   if (err) throw new Error(humanError(err.message));
@@ -54,8 +54,8 @@ export async function loadAll(uid: string): Promise<Partial<State> & { telegramB
   };
 }
 
-export async function loadAudit(): Promise<AuditItem[]> {
-  const { data } = await sb!.from('audit_log').select('at, user_id, entity, entity_id, action').order('at', { ascending: false }).limit(60);
+export async function loadAudit(signal = new AbortController().signal): Promise<AuditItem[]> {
+  const { data } = await sb!.from('audit_log').select('at, user_id, entity, entity_id, action').order('at', { ascending: false }).limit(60).abortSignal(signal);
   const ACT: Record<string, string> = { insert: 'создание', update: 'изменение', delete: 'удаление' };
   return (data ?? []).map((a) => ({ at: a.at, userId: a.user_id, entity: a.entity, entityId: a.entity_id, text: ACT[a.action] ?? a.action }));
 }
@@ -132,8 +132,9 @@ export const fnCreateUser = (profile: Partial<User>) => callFn<{ id: string; pro
 export const fnResetPassword = (userId: string) => callFn<{ password: string }>('team-admin', { action: 'reset_password', userId });
 export const fnBootstrap = (profile: Partial<User>, password: string) => callFn<{ ok: true }>('team-admin', { action: 'bootstrap', profile, password });
 export const fnRegister = (profile: Partial<User>, kind: 'hq' | 'okrug', password: string) => callFn<{ ok: true }>('team-admin', { action: 'register', profile, kind, password });
-export async function myStatus(): Promise<{ exists: boolean; active?: boolean; pending?: boolean; name?: string }> {
-  const { data } = await sb!.rpc('my_status');
+export async function myStatus(signal = new AbortController().signal): Promise<{ exists: boolean; active?: boolean; pending?: boolean; name?: string }> {
+  const { data, error } = await sb!.rpc('my_status').abortSignal(signal);
+  if (error) throw new Error(humanError(error.message));
   return (data as { exists: boolean }) ?? { exists: false };
 }
 export const fnSetupBot = (appUrl: string) => callFn<{ username: string }>('telegram', { action: 'setup', appUrl });

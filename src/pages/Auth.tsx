@@ -2,9 +2,9 @@ import { ThemeToggle } from '../ui/appearance';
 import { AlertTriangle, Clock, LogIn, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react';
 import { firstName } from '../lib/names';
 import { useState } from 'react';
-import { bootstrapHead, register, signIn, signOut, usePhase } from '../data/store';
+import { bootstrapHead, register, restartSignIn, signIn, signOut, usePhase } from '../data/store';
 import { OKRUGS } from '../data/okrugs';
-import { Button, Field, Input, Segmented, Select } from '../ui/kit';
+import { Button, Field, Input, run, Segmented, Select } from '../ui/kit';
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -29,9 +29,10 @@ export default function AuthGate({ preview = false }: { preview?: boolean }) {
         <div className="auth-card">
           <div className="callout danger"><AlertTriangle size={16} style={{ flex: 'none', marginTop: 2 }} />{error}</div>
           <div className="row" style={{ marginTop: 14 }}>
-            <Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>Обновить</Button>
-            <Button onClick={() => signOut()}>Войти другой учётной записью</Button>
+            <Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>Повторить загрузку</Button>
+            <Button onClick={() => run(restartSignIn)}>Войти заново</Button>
           </div>
+          <p className="small muted" style={{ marginBottom: 0 }}>«Войти заново» завершает вход только в этом браузере. Данные команды остаются на сервере.</p>
         </div>
       </Shell>
     );
@@ -46,7 +47,10 @@ export default function AuthGate({ preview = false }: { preview?: boolean }) {
         </div>
       </Shell>
     );
-  return <Shell>{phase === 'setup' ? <Setup /> : <Entry />}</Shell>;
+  return <Shell><div className="col" style={{ width: '100%', maxWidth: 440, gap: 14 }}>
+    {phase === 'signed-out' && error && <div className="callout danger" role="status"><AlertTriangle size={16} style={{ flex: 'none' }} />{error}</div>}
+    {phase === 'setup' ? <Setup /> : <Entry />}
+  </div></Shell>;
 }
 
 function Entry() {
