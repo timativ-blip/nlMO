@@ -17,4 +17,5 @@ jobs:
       - run: npm ci
       - run: npm run test:analytics
       - run: npm run test:startup
+      - run: npm run test:media
       - run: npm run build

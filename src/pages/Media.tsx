@@ -11,14 +11,10 @@ import { MoMap } from '../ui/widgets';
 import BriefsView from './Briefs';
 import { DEMO_MODE, getState } from '../data/store';
 import { demoMedia } from '../data/demo-media';
-
-type Src = 'vk' | 'tg' | 'youtube' | 'tiktok' | 'instagram' | 'other';
-// [дата, заголовок, канал, источник, автор, баллы, вклад, просмотры, лайки, комм., репосты, избранное, url, засчитан, причина]
-export type Post = [string, string, string, Src, number, number, number, number, number, number, number, number, string, 0 | 1, string];
-export interface PdData { groups: { id: string; num: number; name: string }[]; people: [string, string][]; posts: Post[]; updated: string }
-interface Channel { status: 'ok' | 'empty' | 'closed' | 'error' | 'nokey'; last?: string; url?: string; link?: string; about?: string }
-interface GroupRow { okrug: string; city: string; coord: string; resp: string; vk: Channel | null; tg: Channel | null }
-export interface GroupsData { groups: GroupRow[]; vkEnabled: boolean; updated: string }
+import { loadMediaTimeline, mediaMonth, mediaMonths, mediaSeasonTitle } from '../data/media-season';
+import { withDeadline } from '../lib/deadline';
+import type { Channel, GroupRow, GroupsData, PdData, Post, Src } from '../data/media-types';
+export type { GroupsData, PdData, Post } from '../data/media-types';
 
 const SRC_ORDER: Src[] = ['vk', 'tg', 'youtube', 'tiktok', 'instagram'];
 const SRC_LABEL: Record<Src, string> = { vk: 'ВКонтакте', tg: 'Telegram', youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', other: 'Другое' };
@@ -41,7 +37,23 @@ export function useJson<T>(name: string, everyMs: number) {
   useEffect(() => {
     let alive = true;
     if (DEMO_MODE) { setData(demoMedia(name, getState()) as T); setError(false); return; }
-    const load = () => fetch(`${FUNCTIONS_URL}/${name}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject())).then((d) => { if (alive && !d.error) { setData(d); setError(false); } }).catch(() => alive && setError(true));
+    let loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const d = await withDeadline(async (signal) => {
+          if (name === 'media-pd') return loadMediaTimeline(`${FUNCTIONS_URL}/${name}`, signal);
+          const r = await fetch(`${FUNCTIONS_URL}/${name}`, { cache: 'no-store', signal });
+          if (!r.ok) throw new Error('Данные недоступны.');
+          const result = await r.json();
+          if (result.error) throw new Error(result.error);
+          return result;
+        }, 20000, 'Не удалось дождаться данных медиа.');
+        if (alive) { setData(d as T); setError(false); }
+      } catch { if (alive) setError(true); }
+      finally { loading = false; }
+    };
     load();
     const t = setInterval(load, everyMs);
     return () => { alive = false; clearInterval(t); };
@@ -84,15 +96,14 @@ type View = 'brief' | 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
 export default function MediaPage({ route }: { route: Route }) {
   const view = (route.parts[1] as View) || 'dash';
   const pd = useJson<PdData>('media-pd', 60000);
-  const months = useMemo(() => (pd.data ? [...new Set(pd.data.posts.map((p) => p[0].slice(0, 7)))].sort() : []), [pd.data]);
-  const [month, setMonth] = useState('');
-  useEffect(() => { if (months.length && !months.includes(month)) setMonth(months[months.length - 1]); }, [months]); // eslint-disable-line
+  const months = useMemo(() => (pd.data ? mediaMonths(pd.data) : []), [pd.data]);
+  const [selectedMonth, setMonth] = useState('');
+  const month = mediaMonth(months, selectedMonth);
   const A = useMemo(() => (pd.data && month ? compute(pd.data, month) : null), [pd.data, month]);
   const [sheet, setSheet] = useState<{ t: 'g' | 'p' | 'about'; id: string }[]>([]);
   const open = (t: 'g' | 'p' | 'about', id: string, push = false) => setSheet((s) => (push ? [...s, { t, id }] : [{ t, id }]));
   useEffect(() => setSheet([]), [view]);
   const mi = months.indexOf(month);
-  const [y, mo] = month ? month.split('-').map(Number) : [0, 0];
 
   return (
     <>
@@ -101,7 +112,7 @@ export default function MediaPage({ route }: { route: Route }) {
         {view !== 'groups' && view !== 'brief' && month && (
           <div className="month-switch">
             <Button size="sm" iconOnly icon={ChevronLeft} aria-label="Предыдущий месяц" disabled={mi <= 0} onClick={() => setMonth(months[mi - 1])} />
-            <span className="pill">{MONTHS_NOM[mo - 1]} {y}</span>
+            <span className="pill" aria-live="polite">{pd.data && mediaSeasonTitle(pd.data, month)}</span>
             <Button size="sm" iconOnly icon={ChevronRight} aria-label="Следующий месяц" disabled={mi >= months.length - 1} onClick={() => setMonth(months[mi + 1])} />
           </div>
         )}
@@ -112,6 +123,7 @@ export default function MediaPage({ route }: { route: Route }) {
         <div className="card"><Empty icon={Info} title="Не удалось загрузить данные «Пиши-Делись»" text="Таблица или документ со списком сейчас недоступны. Обновите страницу через пару минут." /></div>
       ) : !A ? <div className="map-skel" style={{ height: 320 }} /> : (
         <>
+          {pd.error && <div className="callout danger" role="status" style={{ marginBottom: 14 }}>Не удалось обновить данные. Показана последняя полученная выгрузка; повторим загрузку через минуту.</div>}
           <Ticker A={A} month={month} />
           {view === 'dash' && pd.data && <DashView A={A} D={pd.data} month={month} months={months} open={open} />}
           {view === 'okr' && <OkrView A={A} open={open} />}
@@ -325,7 +337,7 @@ function About() {
   return (
     <div className="col" style={{ gap: 12 }}>
       <h1 style={{ fontSize: 30 }}>О рейтинге</h1>
-      <p style={{ margin: 0 }}>Статистика «Пиши-Делись» по Московской области: рейтинг округов 118–129 и авторов. Посты — из выгрузки «Пиши-Делись» (Google-таблица), принадлежность авторов к округам — из документа со списком. Посты со вкладки «Невыполнены условия» тоже идут в баллы; у таких людей стоит значок «!N». Данные обновляются каждую минуту.</p>
+      <p style={{ margin: 0 }}>Статистика «Пиши-Делись» по Московской области: рейтинг округов 118–129 и авторов. Сентябрь 2026 — 10 сезон, октябрь — 11 сезон; месяц переключается стрелками. Посты — из выгрузки «Пиши-Делись» (Google-таблица), принадлежность авторов к округам — из документа со списком. Посты с невыполненными условиями тоже идут в баллы; у таких людей стоит значок «!N». Данные обновляются каждую минуту.</p>
       <h2>Как считаются баллы</h2>
       <div className="card table-wrap"><table className="tbl"><tbody>{f.map(([k, t, r]) => [<tr key={k}><th colSpan={2}><span className="row"><SrcIcon s={k} />{t}</span></th></tr>, ...r.map((x) => <tr key={k + x[0]}><td>{x[0]}</td><td className="right">{x[1]}</td></tr>)])}</tbody></table></div>
       <p style={{ margin: 0 }}>Затем балл умножается на коэффициент: оригинальный пост × 1.5, неоригинальный × 1.2, репост × 1.</p>
