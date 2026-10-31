@@ -29,6 +29,11 @@
   color-scheme: dark;
 }
 html { background: var(--bg); scroll-behavior: smooth; }
+.mini-entry { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+html[data-telegram='1'] { scroll-padding-top: calc(90px + var(--mini-safe-top, 0px)); }
+html[data-telegram='1'] body { padding-top: var(--mini-safe-top, 0px); }
+html[data-telegram='1'] .topbar { top: var(--mini-safe-top, 0px); }
+html[data-telegram='1'] .bottom-nav { padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--mini-safe-bottom, 0px)); }
 body { background: var(--bg); color: var(--text); font-size: 13.5px; }
 h1, h2, h3, h4 { text-transform: none; letter-spacing: -.035em; color: var(--text); font-family: var(--font-display); }
 h1 { font-size: clamp(26px,2.4vw,34px); font-weight: 650; line-height: 1.2; }

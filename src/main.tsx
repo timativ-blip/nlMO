@@ -7,6 +7,7 @@ import './design.css';
 import { Component, StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { TelegramMiniApp } from './ui/TelegramMiniApp';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -26,7 +27,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <TelegramMiniApp><App /></TelegramMiniApp>
     </ErrorBoundary>
   </StrictMode>,
 );
