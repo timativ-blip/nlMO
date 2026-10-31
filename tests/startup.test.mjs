@@ -84,6 +84,17 @@ test('a signed-out session cannot be overwritten by a late data response', async
   assert.deepEqual(app.getState().users,[]);
 });
 
+test('late realtime events from the old account cannot restore its data after sign-out', async () => {
+  const config={signedIn:true};
+  const app=await start(config);
+  assert.equal(app.getPhase().phase,'ready');
+  const events=config.liveCallbacks.filter(({filter})=>['tasks','profiles','telegram_links'].includes(filter.table));
+  assert.equal(events.length,3);
+  config.emit('SIGNED_OUT',null);await wait();
+  for(const {filter,listener} of events)listener({eventType:'INSERT',new:{data:{id:'old-account-private-data'},user_id:'test-user'},old:{}});
+  assert.deepEqual(app.getState().tasks,[]);assert.deepEqual(app.getState().users,[]);assert.equal(app.getState().extras.telegramLinked,undefined);
+});
+
 test('recovery only clears this project session after the explicit action', async () => {
   const app=await start();
   entries=new Map([['sb-test-auth-token','session'],['sb-test-auth-token-code-verifier','verifier'],['kc-appearance-v1','dark'],['kc-mo-demo','demo'],['sb-other-auth-token','other']]);

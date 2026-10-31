@@ -10,7 +10,8 @@
     "test:analytics": "vite build --ssr src/data/insights.ts --outDir .test-build && node --test tests/insights.test.mjs",
     "test:startup": "vite build --config tests/startup.vite.config.ts --ssr tests/startup-entry.ts --outDir .test-startup && node --test tests/startup.test.mjs",
     "test:media": "vite build --ssr src/data/media-season.ts --outDir .test-media && node --test tests/media-season.test.mjs",
-    "test:workflows": "vite build --ssr tests/workflows-entry.ts --outDir .test-workflows && node --test tests/workflows.test.mjs tests/workflows-db.test.mjs"
+    "test:workflows": "vite build --ssr tests/workflows-entry.ts --outDir .test-workflows && node --test tests/workflows.test.mjs tests/workflows-db.test.mjs",
+    "test:telegram": "tsc --project tests/telegram.tsconfig.json && vite build --ssr tests/telegram-entry.ts --outDir .test-telegram && node --test tests/telegram*.test.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "5.1.0",

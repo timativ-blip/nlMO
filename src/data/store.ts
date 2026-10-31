@@ -203,16 +203,24 @@ async function boot(uid: string) {
     channel?.unsubscribe();
     channel = sb!.channel('kc-live');
     for (const t of ['tasks', 'events', 'reports', 'profiles', 'districts', 'metrics', 'daily_reports', 'media_briefs']) {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, (p) => applyRemote(t, (p.new as { data?: unknown })?.data ?? (p.old as { data?: unknown })?.data, p.eventType === 'DELETE'));
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, (p) => {
+        if (generation !== authGeneration || uid !== state.session.userId) return;
+        applyRemote(t, (p.new as { data?: unknown })?.data ?? (p.old as { data?: unknown })?.data, p.eventType === 'DELETE');
+      });
     }
-    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` }, (p) => applyRemote('notifications', (p.new as { data: unknown }).data));
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` }, (p) => {
+      if (generation !== authGeneration || uid !== state.session.userId) return;
+      applyRemote('notifications', (p.new as { data: unknown }).data);
+    });
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (p) => {
+      if (generation !== authGeneration || uid !== state.session.userId) return;
       const row = p.new as { key: string; value: unknown };
       if (row.key === 'weights') { state = { ...state, weights: row.value as Weights }; emit(); }
       if (row.key === 'pd_plan') { state = { ...state, pdPlan: row.value as PdPlan }; emit(); }
       if (row.key === 'telegram') { state = { ...state, extras: { ...state.extras, telegramBot: (row.value as { username: string }).username } }; emit(); }
     });
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'telegram_links' }, (p) => {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'telegram_links', filter: `user_id=eq.${uid}` }, (p) => {
+      if (generation !== authGeneration || uid !== state.session.userId) return;
       state = { ...state, extras: { ...state.extras, telegramLinked: p.eventType !== 'DELETE' } };
       emit();
     });

@@ -31,7 +31,7 @@ function query(name: string) {
   };
   return q;
 }
-const channel: any = { on: () => channel, subscribe: () => channel, unsubscribe: () => {} };
+const channel: any = { on: (kind: string, filter: unknown, listener: unknown) => { (config.liveCallbacks ??= []).push({ kind, filter, listener }); return channel; }, subscribe: () => channel, unsubscribe: () => {} };
 export const sb: any = {
   auth: {
     getSession: () => config.authHang ? new Promise(() => {}) : Promise.resolve({ data: { session: config.signedIn ? session : null }, error: null }),

@@ -70,11 +70,13 @@ function TelegramCard() {
   const linked = !!s.extras?.telegramLinked;
   const connect = async () => {
     // Окно открываем сразу, иначе браузер заблокирует его как всплывающее
-    const w = window.open('', '_blank');
+    const mini = window.Telegram?.WebApp;
+    const useMini = !!(mini?.initData && mini.openTelegramLink);
+    const w = useMini ? null : window.open('', '_blank');
     setBusy(true);
     try {
       const url = await connectTelegram();
-      if (w) w.location.href = url; else location.href = url;
+      if (useMini) mini!.openTelegramLink!(url); else if (w) w.location.href = url; else location.href = url;
       toast('Нажмите «Старт» в Telegram — бот подтвердит подключение');
     } catch (e) {
       w?.close();
@@ -83,15 +85,16 @@ function TelegramCard() {
   };
   return (
     <div className="card card-pad col" style={{ gap: 10 }}>
-      <h2 className="row"><Send size={18} />Уведомления в Telegram</h2>
+      <h2 className="row"><Send size={18} />Telegram-бот</h2>
       {linked ? (
         <>
-          <div className="callout ok"><CheckCircle2 size={16} />Подключено. Назначения, сроки, комментарии и решения по проверке приходят в Telegram.</div>
-          <div><Button variant="ghost" onClick={async () => { try { await disconnectTelegram(); toast('Telegram отключён'); } catch (e) { toast((e as Error).message, 'error'); } }}>Отключить</Button></div>
+          <div className="callout ok"><CheckCircle2 size={16} />Подключено. В боте доступны уведомления, сайт как мини-приложение и заполнение отчётов и результатов задач.</div>
+          <div className="row wrap">{s.extras?.telegramBot && <a className="btn btn-primary" href={`https://t.me/${s.extras.telegramBot}`} target="_blank" rel="noreferrer">Открыть бота</a>}<Button variant="ghost" onClick={async () => { try { await disconnectTelegram(); toast('Telegram отключён'); } catch (e) { toast((e as Error).message, 'error'); } }}>Отключить</Button></div>
+          <p className="small muted" style={{ margin: 0 }}>/daily — отчёт дня · /weekly — недельный отчёт · /tasks — сдать результат · /resume — продолжить черновик. Перед записью бот попросит подтвердить данные.</p>
         </>
       ) : (
         <>
-          <p className="small muted" style={{ margin: 0 }}>Уведомления продублируются в Telegram. Если Telegram работает с перебоями, все уведомления остаются в колокольчике приложения.</p>
+          <p className="small muted" style={{ margin: 0 }}>Подключите бота один раз: получайте уведомления, открывайте сайт внутри Telegram и заполняйте отчёты и результаты задач сообщениями.</p>
           <div><Button variant="primary" icon={Send} disabled={busy} onClick={connect}>{busy ? 'Открываю…' : 'Подключить Telegram'}</Button></div>
           {!s.extras?.telegramBot && <span className="small muted">Бот ещё не подключён руководителем области.</span>}
         </>
@@ -138,7 +141,8 @@ function BotCard() {
             <li>В Supabase: Edge Functions → Secrets → добавьте <code>TELEGRAM_BOT_TOKEN</code> с этим токеном.</li>
             <li>Нажмите кнопку ниже.</li>
           </ol>}
-      <div><Button variant={bot ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy} onClick={setup}>{busy ? 'Подключаю…' : bot ? 'Переподключить' : 'Подключить бота'}</Button></div>
+      <p className="small muted" style={{ margin: 0 }}>Кнопка «Открыть сайт» запускает мини-приложение. Команды бота позволяют заполнить отчёты и сдать результат задачи, если сайт временно недоступен.</p>
+      <div><Button variant={bot ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy} onClick={setup}>{busy ? 'Подключаю…' : bot ? 'Обновить меню и подключение' : 'Подключить бота'}</Button></div>
     </div>
   );
 }

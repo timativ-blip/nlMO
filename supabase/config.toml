@@ -1,0 +1,3 @@
+[functions.telegram]
+# The function verifies Telegram webhooks and signed Mini App launch data itself.
+verify_jwt = false
