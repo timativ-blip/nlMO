@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
+import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -100,13 +100,14 @@ function Workspace() {
   return (
     <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a href="#main" className="sr-only">Перейти к содержимому</a>
-      <aside className="sidebar" aria-label="Основная навигация">
-        <div className="brand">
-          <span className="brand-symbol" aria-hidden>нл</span>
-          <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди · Московская область" />
-          <div className="brand-name">Командный центр<span>Московская область</span></div>
+      <aside id="workspace-navigation" className="sidebar" aria-label="Основная навигация">
+        <div className="sidebar-header">
+          <div className="brand">
+            <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди · Московская область" />
+            <div className="brand-name">Командный центр<span>Московская область</span></div>
+          </div>
+          <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-controls="workspace-navigation" aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>{collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}</button>
         </div>
-        <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
         <span className="nav-caption">Рабочее пространство</span>
         {NAV.map((n) => (
           <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined} aria-label={n.label} title={collapsed ? n.label : undefined}>
