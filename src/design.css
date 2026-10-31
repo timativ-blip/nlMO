@@ -42,6 +42,12 @@ h3 { font-size: 14px; letter-spacing: -.01em; }
 .app { grid-template-columns: var(--side-w) minmax(0,1fr); transition: grid-template-columns .35s cubic-bezier(.22,1,.36,1); }
 .sidebar { --sidebar-gutter: 13px; top: 16px; margin: 16px 0 16px 16px; height: calc(100vh - 32px); padding: 23px var(--sidebar-gutter) 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 22px; color: var(--text); box-shadow: var(--float-shadow); overflow: visible; gap: 4px; z-index: 45; }
 .sidebar::after { display: none; }
+.draft-notice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 11px; line-height: 1.5; }
+.draft-notice > span { flex: 1; min-width: 160px; }
+.workflow-targets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.workflow-target { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.workflow-target label { font-size: 12px; cursor: pointer; }
+@media(max-width:650px) { .workflow-targets { grid-template-columns: 1fr; } }
 .sidebar-header { position: relative; margin-bottom: 24px; flex: none; }
 .brand { flex-direction: row; align-items: center; gap: 12px; padding: 2px 7px 24px; min-height: 79px; }
 .sidebar .brand { min-height: 55px; padding-bottom: 0; }

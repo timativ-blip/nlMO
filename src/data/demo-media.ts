@@ -17,6 +17,8 @@ export function demoMedia(name: string, state: State): PdData | GroupsData | nul
         posts.push([addDays(today,-day),`Демо · ${['Работа команды округа','Встреча с жителями','Результаты недели','Ответы на обращения'][day%4]}`,person,day%3 ? 'vk':'tg',i,Math.round(views/20),1,views,Math.round(views*.06),day%7,day%5,0,'',counted,counted ? '':'Меньше 50 просмотров']);
       }
     });
+    const loose = people.push(['Автор без округа (демо)', 'none']) - 1;
+    posts.push([today, 'Демо · публикация без привязки', 'Демо-канал', 'vk', loose, 10, 1, 200, 12, 1, 0, 0, '', 1, '']);
     return { groups: [...state.districts.map((d)=>({id:d.id,num:d.num??0,name:d.name})),{id:'hq',num:0,name:'Штаб'}],people,posts,seasons:MEDIA_SEASONS,updated:new Date().toISOString() };
   }
   if (name === 'media-groups') return { groups: state.districts.flatMap((d,i)=>(d.cities?.slice(0,2)??[d.name]).map((city,j)=>({

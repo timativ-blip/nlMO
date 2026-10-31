@@ -11,6 +11,9 @@ import * as P from './perm';
 import { createSeed, DATA_VERSION } from './seed';
 import type { Attachment, Brief, CalEvent, Notification, PdPlan, Report, State, Task, TaskResult, UiPrefs, User, Weights } from './types';
 import { PRIORITY_LABEL, STATUS_LABEL } from './types';
+import type { MediaMatch, TaskSchedule, TaskTemplate, WorkflowLaunch, WorkflowResult } from './workflow-types';
+import { nextOccurrence, validDay, validateWorkflow, workflowTasks } from './workflow';
+import { mediaSourceKey } from './media-matches';
 
 const KEY = 'kc-mo-demo';
 export const DEMO_MODE = !BACKEND;
@@ -23,7 +26,7 @@ const deny = (msg = 'Недостаточно прав для этого дей�
 const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true } };
 function emptyState(): State {
   return {
-    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], events: [], reports: [], dailyReports: [], briefs: [], metrics: [], notifications: [], audit: [],
+    version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], taskTemplates: [], taskSchedules: [], mediaMatches: [], events: [], reports: [], dailyReports: [], briefs: [], metrics: [], notifications: [], audit: [],
     weights: { personCompletion: 40, personOnTime: 30, personVolume: 30, districtPlan: 50, districtCompletion: 25, districtOnTime: 25, priority: { low: 0.5, normal: 1, high: 1.5, urgent: 2 }, lateFactor: 0.7, minTasks: 3 },
     ui: DEFAULT_UI, session: { userId: '' }, extras: {},
   };
@@ -101,6 +104,13 @@ let bootingUserId: string | null = null;
 const CONNECTION_ERROR = 'Сервер команды не ответил вовремя. Проверьте соединение и повторите загрузку. Сохранённые на сервере данные не меняются.';
 
 let queue: Promise<unknown> = Promise.resolve();
+let lastWrite: Promise<boolean> = Promise.resolve(true);
+/** Clear local form drafts only after the specific server write is confirmed. */
+export async function saveWithConfirmation(action: () => void): Promise<boolean> {
+  const previous = lastWrite;
+  action();
+  return previous === lastWrite ? true : lastWrite;
+}
 function mutate(fn: (d: State, me: User) => void) {
   const prev = state;
   const draft: State = structuredClone(state);
@@ -112,13 +122,17 @@ function mutate(fn: (d: State, me: User) => void) {
     // Чужие уведомления отправляются в базу, но в локальном состоянии не хранятся
     state = { ...state, notifications: state.notifications.filter((n) => n.userId === state.session.userId) };
     if (changes.length || weights || pdPlan) {
+      const savingUser = draft.session.userId, savingGeneration = authGeneration;
       setSyncing(+1);
-      queue = queue
-        .then(() => B.push(changes, weights, pdPlan))
-        .then((saved) => saved.forEach((x) => applyRemote(x.table, x.data)))
+      const write = queue
+        .then(() => withDeadline((signal) => B.push(changes, weights, pdPlan, signal), 20000, 'Сервер не подтвердил сохранение вовремя. Проверьте соединение и повторите попытку.'))
+        .then((saved) => { if (savingUser === state.session.userId && savingGeneration === authGeneration) saved.forEach((x) => applyRemote(x.table, x.data)); });
+      lastWrite = write.then(() => true, () => false);
+      queue = write
         .catch((e: Error) => {
+          if (savingUser !== state.session.userId || savingGeneration !== authGeneration) return;
           saveError?.(`Не сохранено: ${e.message}`);
-          return refresh();
+          return withDeadline((signal) => refresh(signal), 15000, CONNECTION_ERROR).catch(() => { /* Keep unsent form drafts when recovery is also offline. */ });
         })
         .finally(() => setSyncing(-1));
     }
@@ -138,7 +152,7 @@ function applyRemote(table: string, data: unknown, deleted = false) {
   if (!c || !data) return;
   const item = data as { id: string; userId?: string };
   if (c === 'notifications' && item.userId !== state.session.userId) return;
-  const list = state[c] as { id: string }[];
+  const list = (state[c] ?? []) as { id: string }[];
   const i = list.findIndex((x) => x.id === item.id);
   const next = deleted ? list.filter((x) => x.id !== item.id) : i >= 0 ? list.map((x, j) => (j === i ? item : x)) : c === 'notifications' ? [item, ...list] : [...list, item];
   state = { ...state, [c]: next };
@@ -169,6 +183,7 @@ async function boot(uid: string) {
   bootingUserId = uid;
   const generation = ++authGeneration;
   setPhase('loading');
+  resetWorkflowConnection();
   state = { ...emptyState(), session: { userId: uid } };
   try {
     const me = await withDeadline((signal) => refresh(signal), 15000, CONNECTION_ERROR);
@@ -238,7 +253,7 @@ if (BACKEND) {
     setTimeout(() => {
       if (event === 'SIGNED_OUT') {
         ++authGeneration; bootingUserId = null;
-        channel?.unsubscribe(); state = emptyState(); emit();
+        channel?.unsubscribe(); resetWorkflowConnection(); state = emptyState(); emit();
         void showEntry();
       } else if (session && (session.user.id !== state.session.userId || phase !== 'ready')) {
         void boot(session.user.id);
@@ -345,14 +360,14 @@ export function validateTask(i: Partial<TaskInput>, today = todayISO()) {
   return e;
 }
 
-export function createTask(i: TaskInput): string {
+export function createTask(i: TaskInput, requestedId?: string): string {
   let newId = '';
   mutate((s, me) => {
     if (!P.canCreateTask(me) || !P.canAssignIn(me, i.districtId)) deny('Вы можете ставить задачи только в своём округе.');
     const errs = validateTask(i);
     if (Object.keys(errs).length) throw new AppError(Object.values(errs)[0]);
     const t: Task = {
-      id: uid('t'), title: i.title.trim(), description: i.description?.trim() ?? '', assigneeId: i.assigneeId,
+      id: requestedId ?? uid('t'), title: i.title.trim(), description: i.description?.trim() ?? '', assigneeId: i.assigneeId,
       coAssigneeIds: (i.coAssigneeIds ?? []).filter((x) => x !== i.assigneeId), districtId: i.districtId, authorId: me.id,
       due: i.due, priority: i.priority, status: 'new',
       checklist: (i.checklist ?? []).filter((x) => x.trim()).map((text) => ({ id: uid('c'), text: text.trim(), done: false })),
@@ -360,12 +375,39 @@ export function createTask(i: TaskInput): string {
       metricId: i.metricId || null, eventId: i.eventId || null, result: null, createdAt: stamp(),
       history: [{ at: stamp(), userId: me.id, text: `Создал(а) задачу и назначил(а) ответственным: ${name(s, i.assigneeId)}` }],
     };
+    if (s.tasks.some((old) => old.id === t.id)) throw new AppError('Это поручение уже создаётся. Повторите проверку сохранения.');
     s.tasks.push(t);
     newId = t.id;
     notify(s, me, [t.assigneeId, ...t.coAssigneeIds], `Новая задача от ${me.name}: «${t.title}», срок ${t.due.split('-').reverse().join('.')}`, taskLink(t), 'assign');
     audit(s, me, 'task', t.id, 'создание');
   });
   return newId;
+}
+
+/** A restored form reuses its ID, including when a committed server response was lost. */
+export async function createTaskConfirmed(input: TaskInput, requestId: string): Promise<string> {
+  const userId = state.session.userId, generation = authGeneration;
+  const check = async () => {
+    const remote = await withDeadline((signal) => B.findTask(requestId, signal), 15000, CONNECTION_ERROR);
+    if (userId !== state.session.userId || generation !== authGeneration) throw new AppError('Вход изменился. Откройте форму снова.');
+    if (remote) {
+      if (remote.authorId !== userId) throw new AppError('Идентификатор задачи уже занят.');
+      const fieldsMatch = remote.title === input.title.trim() && remote.description === (input.description?.trim() ?? '')
+        && remote.assigneeId === input.assigneeId && remote.districtId === input.districtId && remote.due === input.due && remote.priority === input.priority
+        && (remote.metricId ?? null) === (input.metricId || null) && (remote.eventId ?? null) === (input.eventId || null)
+        && JSON.stringify([...remote.coAssigneeIds].sort()) === JSON.stringify((input.coAssigneeIds ?? []).filter((id) => id !== input.assigneeId).sort())
+        && JSON.stringify(remote.checklist.map((item) => item.text)) === JSON.stringify((input.checklist ?? []).map((text) => text.trim()).filter(Boolean))
+        && JSON.stringify(remote.attachments.map((item) => item.url)) === JSON.stringify((input.links ?? []).filter((url) => url.trim()));
+      if (!fieldsMatch) throw new AppError(`Сервер уже сохранил предыдущую версию «${remote.title}». Новые правки остались в черновике. Откройте созданную задачу в списке, чтобы внести их.`);
+      applyRemote('tasks', remote); return true;
+    }
+    return false;
+  };
+  if (BACKEND && await check()) return requestId;
+  if (BACKEND && state.tasks.some((task) => task.id === requestId)) { state = { ...state, tasks: state.tasks.filter((task) => task.id !== requestId) }; emit(); }
+  if (await saveWithConfirmation(() => createTask(input, requestId))) return requestId;
+  if (BACKEND && await check()) return requestId;
+  throw new AppError('Сохранение не подтверждено. Черновик и идентификатор поручения сохранены для повторной попытки.');
 }
 
 type TaskPatch = Partial<Pick<Task, 'title' | 'description' | 'assigneeId' | 'coAssigneeIds' | 'due' | 'priority' | 'districtId' | 'metricId' | 'eventId'>>;
@@ -816,3 +858,146 @@ export function setPdPlan(plan: PdPlan) {
 
 export const defaultEventStart = () => `${addDays(todayISO(), 1)}T12:00`;
 export { nowMsk };
+
+/* ───────── Templates, atomic district assignments, schedules and media matches ───────── */
+let workflowStatus = { ready: DEMO_MODE, loading: false, error: '' };
+const workflowSubs = new Set<() => void>();
+let workflowChannel: ReturnType<NonNullable<typeof sb>['channel']> | null = null;
+let workflowChannelUser = '';
+let workflowChannelGeneration = -1;
+const workflowStatusSet = (next: typeof workflowStatus) => { workflowStatus = next; workflowSubs.forEach((fn) => fn()); };
+function resetWorkflowConnection() {
+  workflowChannel?.unsubscribe(); workflowChannel = null; workflowChannelUser = ''; workflowChannelGeneration = -1;
+  workflowStatusSet({ ready: false, loading: false, error: '' });
+}
+export const useWorkflowStatus = () => useSyncExternalStore((fn) => { workflowSubs.add(fn); return () => { workflowSubs.delete(fn); }; }, () => workflowStatus);
+export async function loadWorkflowData() {
+  if (DEMO_MODE) { runDemoSchedules(); return; }
+  const userId = state.session.userId, generation = authGeneration;
+  if (!userId || workflowStatus.loading) return;
+  workflowStatusSet({ ...workflowStatus, loading: true });
+  try {
+    const data = await withDeadline((signal) => B.loadWorkflows(signal), 15000, CONNECTION_ERROR);
+    if (userId !== state.session.userId || generation !== authGeneration) return;
+    state = { ...state, ...data }; emit();
+    workflowStatusSet({ ready: true, loading: false, error: '' });
+    if (workflowChannelUser !== userId || workflowChannelGeneration !== generation) {
+      workflowChannel?.unsubscribe();
+      workflowChannelUser = userId;
+      workflowChannelGeneration = generation;
+      workflowChannel = sb!.channel(`kc-workflows-${userId}`);
+      for (const table of ['task_templates', 'task_schedules', 'media_matches']) workflowChannel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+        if (state.session.userId !== userId || generation !== authGeneration) return;
+        const data = ((payload.new ?? {}) as { data?: unknown }).data;
+        if (data) applyRemote(table, data);
+      });
+      workflowChannel.subscribe();
+    }
+  } catch {
+    if (userId === state.session.userId && generation === authGeneration) workflowStatusSet({ ready: false, loading: false, error: 'Новые инструменты пока недоступны на сервере. Обычные задачи и отчёты работают; повторите загрузку позже.' });
+  } finally {
+    if (workflowStatus.loading && userId === state.session.userId && generation === authGeneration) workflowStatusSet({ ...workflowStatus, loading: false });
+  }
+}
+const requireWorkflows = () => { if (!workflowStatus.ready) throw new AppError('Дождитесь подключения новых инструментов к серверу.'); };
+
+export async function saveTaskTemplate(input: Omit<TaskTemplate, 'id' | 'ownerId' | 'updatedAt'> & { id?: string }) {
+  requireWorkflows();
+  let id = input.id ?? uid('tpl');
+  const ok = await saveWithConfirmation(() => mutate((s, me) => {
+    if (!P.canCreateTask(me)) deny();
+    const old = s.taskTemplates?.find((t) => t.id === id);
+    if (old && old.ownerId !== me.id && me.role !== 'head') deny();
+    if (input.shared && !P.isManager(me)) deny('Общие шаблоны создаёт штаб или руководство.');
+    if (input.name.trim().length < 3 || input.body.title.trim().length < 3) throw new AppError('Укажите название шаблона и задачи.');
+    if (!Number.isInteger(input.deadlineDays) || input.deadlineDays < 0 || input.deadlineDays > 365) throw new AppError('Срок выполнения — от 0 до 365 дней.');
+    const item: TaskTemplate = { ...input, id, ownerId: old?.ownerId ?? me.id, updatedAt: stamp() };
+    s.taskTemplates = [...(s.taskTemplates ?? []).filter((t) => t.id !== id), item];
+  }));
+  if (!ok) throw new AppError('Шаблон не сохранён на сервере. Ваш текст остался в черновике.');
+  return id;
+}
+
+export async function launchTaskWorkflow(input: WorkflowLaunch): Promise<WorkflowResult> {
+  requireWorkflows();
+  const userId = state.session.userId, generation = authGeneration;
+  const actor = state.users.find((u) => u.id === userId)!;
+  try { validateWorkflow(input.body, input.targets, input.due, state, actor, todayISO()); } catch (error) { throw new AppError((error as Error).message); }
+  if (BACKEND) {
+    await queue;
+    if (state.session.userId !== userId || generation !== authGeneration) throw new AppError('Вход изменился. Откройте форму снова.');
+    setSyncing(1);
+    try {
+      const result = await withDeadline((signal) => B.launchWorkflow(input, signal), 20000, CONNECTION_ERROR);
+      if (state.session.userId !== userId || generation !== authGeneration) throw new AppError('Вход изменился.');
+      result.tasks.forEach((task) => applyRemote('tasks', task));
+      if (result.schedule) applyRemote('task_schedules', result.schedule);
+      return result;
+    } catch (error) { throw new AppError((error as Error).message); }
+    finally { setSyncing(-1); }
+  }
+  let result: WorkflowResult = { tasks: [], schedule: null };
+  mutate((s, me) => {
+    const receipt = s.workflowRequests?.[input.requestId];
+    if (receipt && receipt !== JSON.stringify(input)) throw new AppError('Параметры уже отправленного поручения изменились. Создайте новое.');
+    if (receipt) { result = { tasks: s.tasks.filter((t) => t.batchId === input.requestId), schedule: s.taskSchedules?.find((t) => t.id === `sc_${input.requestId}`) ?? null }; return; }
+    const today = todayISO(), rule = input.repeat;
+    if (rule && (!['weekly', 'monthly'].includes(rule.frequency) || !validDay(rule.start) || rule.start < today || !/^([01]\d|2[0-3]):[0-5]\d$/.test(rule.time) || !Number.isInteger(rule.deadlineDays) || rule.deadlineDays < 0 || rule.deadlineDays > 365)) throw new AppError('Проверьте дату, время и срок повторения.');
+    const now = !rule || rule.start < today || (rule.start === today && rule.time <= nowMsk().slice(11, 16));
+    const schedule: TaskSchedule | null = rule ? { id: `sc_${input.requestId}`, ownerId: me.id, body: input.body, targets: input.targets, rule, nextRun: now ? nextOccurrence(rule.start, rule.frequency, today) : rule.start, enabled: true, createdAt: stamp(), ...(now ? { lastRun: today } : {}) } : null;
+    const tasks = now ? workflowTasks(input.body, input.targets, rule ? addDays(today, rule.deadlineDays) : input.due, me, input.requestId, stamp(), schedule?.id) : [];
+    s.tasks.push(...tasks);
+    if (schedule) s.taskSchedules = [...(s.taskSchedules ?? []), schedule];
+    s.workflowRequests = { ...s.workflowRequests, [input.requestId]: JSON.stringify(input) };
+    tasks.forEach((task) => notify(s, me, [task.assigneeId], `Новая задача: «${task.title}», срок ${task.due.split('-').reverse().join('.')}`, taskLink(task), 'assign'));
+    result = { tasks, schedule };
+  });
+  return result;
+}
+
+export async function setScheduleEnabled(id: string, enabled: boolean) {
+  requireWorkflows();
+  const ok = await saveWithConfirmation(() => mutate((s, me) => {
+    const job = s.taskSchedules?.find((j) => j.id === id);
+    if (!job) throw new AppError('Расписание не найдено.');
+    if (job.ownerId !== me.id && me.role !== 'head') deny();
+    job.enabled = enabled; job.lastError = '';
+  }));
+  if (!ok) throw new AppError('Изменение расписания не сохранено.');
+}
+
+export async function saveMediaMatch(sourceName: string, groupId: string, userId: string | null, active = true) {
+  requireWorkflows();
+  const ok = await saveWithConfirmation(() => mutate((s, me) => {
+    const id = mediaSourceKey(sourceName), old = s.mediaMatches?.find((m) => m.id === id);
+    const allowed = (group: string) => P.isManager(me) || (group !== 'hq' && P.canAssignIn(me, group));
+    if (!allowed(groupId) || (old && !allowed(old.groupId))) deny();
+    if (groupId !== 'hq' && !s.districts.some((d) => d.id === groupId)) throw new AppError('Выберите округ.');
+    const user = userId ? s.users.find((u) => u.id === userId && u.active && !u.pending) : null;
+    if (userId && (!user || (user.districtId ?? 'hq') !== groupId)) throw new AppError('Человек должен относиться к выбранному округу.');
+    const match: MediaMatch = { id, sourceName, groupId, userId, ownerId: old?.ownerId ?? me.id, active, updatedAt: stamp() };
+    s.mediaMatches = [...(s.mediaMatches ?? []).filter((m) => m.id !== id), match];
+  }));
+  if (!ok) throw new AppError('Сопоставление не сохранено на сервере.');
+}
+
+function runDemoSchedules() {
+  if (!DEMO_MODE || !state.taskSchedules?.some((j) => j.enabled && j.nextRun <= todayISO())) return;
+  mutate((s) => {
+    const today = todayISO();
+    for (const job of s.taskSchedules ?? []) {
+      if (!job.enabled || job.nextRun > today || (job.nextRun === today && job.rule.time > nowMsk().slice(11, 16))) continue;
+      const actor = s.users.find((u) => u.id === job.ownerId);
+      try {
+        if (!actor) throw new Error('Автор расписания не найден.');
+        const due = addDays(today, job.rule.deadlineDays);
+        validateWorkflow(job.body, job.targets, due, s, actor, today);
+        const batch = `${job.id}_${job.nextRun}`;
+        const tasks = workflowTasks(job.body, job.targets, due, actor, batch, stamp(), job.id).filter((t) => !s.tasks.some((old) => old.id === t.id));
+        s.tasks.push(...tasks);
+        tasks.forEach((task) => notify(s, actor, [task.assigneeId], `По расписанию: «${task.title}», срок ${task.due}`, taskLink(task), 'assign'));
+        job.lastRun = today; job.lastError = ''; job.nextRun = nextOccurrence(job.rule.start, job.rule.frequency, today);
+      } catch (error) { job.lastError = (error as Error).message; job.enabled = false; }
+    }
+  });
+}

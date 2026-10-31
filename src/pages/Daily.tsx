@@ -1,14 +1,15 @@
 // Ежедневные отчёты о работе: штаб, медиа-штаб, координаторы и заместители.
 // Напоминание в 18:00 МСК по будням приходит тем, кто ещё не сдал (колокольчик + Telegram).
 import { CheckCircle2, ClipboardCheck, Save, Search } from 'lucide-react';
+import { DraftNotice, useDraft } from '../ui/drafts';
 import { useEffect, useMemo, useState } from 'react';
 import * as P from '../data/perm';
-import { saveDaily, useAppState } from '../data/store';
+import { saveDaily, saveWithConfirmation, useAppState } from '../data/store';
 import { roleLabel, type DailyReport, type User } from '../data/types';
 import { addDays, fmtDayLong, fmtDayMonth, fmtStamp, todayISO, WD_SHORT, weekday } from '../lib/date';
 import { go } from '../lib/router';
 import { useLookup, useMe } from '../ui/hooks';
-import { Avatar, Button, Empty, Field, run, Select, Textarea } from '../ui/kit';
+import { Avatar, Button, Empty, Field, run, Select, Textarea, toast } from '../ui/kit';
 
 const isWorkday = (d: string) => weekday(d) < 5;
 
@@ -47,13 +48,21 @@ function MyForm() {
   const today = todayISO();
   const [day, setDay] = useState(today);
   const existing = s.dailyReports.find((r) => r.userId === me.id && r.day === day);
-  const [v, setV] = useState({ done: '', plan: '', problems: '' });
+  const draft = useDraft(`daily:${day}`, { done: existing?.done ?? '', plan: existing?.plan ?? '', problems: existing?.problems ?? '' }, existing?.updatedAt ?? '');
+  const v = draft.value, setV = draft.set;
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { setV({ done: existing?.done ?? '', plan: existing?.plan ?? '', problems: existing?.problems ?? '' }); setErr(''); }, [day, existing?.id, existing?.updatedAt]); // eslint-disable-line
+  useEffect(() => setErr(''), [day]);
   const days = [today, addDays(today, -1), addDays(today, -2)];
-  const save = () => {
+  const save = async () => {
+    if (busy) return;
     if (v.done.trim().length < 10) { setErr('Опишите, что сделано за день — хотя бы одно предложение.'); return; }
-    run(() => saveDaily({ day, ...v }), existing ? 'Отчёт обновлён' : 'Отчёт сдан — спасибо!');
+    setBusy(true);
+    try {
+      if (!await saveWithConfirmation(() => saveDaily({ day, ...v }))) { setErr('Сервер не подтвердил сохранение. Ваш текст остался в черновике.'); return; }
+      draft.confirm(v); toast(existing ? 'Отчёт обновлён' : 'Отчёт сдан — спасибо!');
+    } catch (error) { setErr((error as Error).message); }
+    finally { setBusy(false); }
   };
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
@@ -62,12 +71,13 @@ function MyForm() {
         {existing ? <span className="badge st-done"><CheckCircle2 size={12} />сдан {fmtStamp(existing.updatedAt).split(', ')[1]}</span> : P.mustReportDaily(me) ? <span className="badge st-review">ещё не сдан</span> : <span className="badge">по желанию</span>}
         <Select className="select-sm" style={{ width: 170 }} value={day} onChange={(e) => setDay(e.target.value)} options={days.map((d) => ({ value: d, label: d === today ? 'Сегодня' : d === addDays(today, -1) ? 'Вчера' : fmtDayMonth(d) }))} aria-label="День отчёта" />
       </div>
+      <DraftNotice draft={draft} />
       <Field label="Что сделано" required error={err}><Textarea rows={4} value={v.done} invalid={!!err} onChange={(e) => { setV({ ...v, done: e.target.value }); setErr(''); }} placeholder="Встречи, публикации, обращения, мероприятия — коротко и по делу" /></Field>
       <div className="grid g-2" style={{ gap: 12 }}>
         <Field label="План на завтра"><Textarea rows={2} value={v.plan} onChange={(e) => setV({ ...v, plan: e.target.value })} /></Field>
         <Field label="Проблемы, нужна помощь"><Textarea rows={2} value={v.problems} onChange={(e) => setV({ ...v, problems: e.target.value })} /></Field>
       </div>
-      <div className="row"><Button variant="primary" icon={Save} onClick={save}>{existing ? 'Обновить отчёт' : 'Сдать отчёт'}</Button><span className="small muted">Напоминание приходит в 18:00 по будням, если отчёт не сдан.</span></div>
+      <div className="row"><Button disabled={busy} variant="primary" icon={Save} onClick={save}>{busy ? 'Сохраняю…' : existing ? 'Обновить отчёт' : 'Сдать отчёт'}</Button><span className="small muted">Напоминание приходит в 18:00 по будням, если отчёт не сдан.</span></div>
     </div>
   );
 }

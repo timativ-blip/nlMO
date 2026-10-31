@@ -2,7 +2,8 @@ import { ArrowLeft, Check, Download, FileSpreadsheet, FileText, Printer, RotateC
 import { useEffect, useMemo, useState } from 'react';
 import { num, pct, reportData } from '../data/calc';
 import * as P from '../data/perm';
-import { reviewReport, saveReport, sendReport, useAppState } from '../data/store';
+import { reviewReport, saveReport, saveWithConfirmation, sendReport, useAppState } from '../data/store';
+import { DraftNotice, useDraft } from '../ui/drafts';
 import type { Report, ReportStatus, State } from '../data/types';
 import { EVENT_TYPE_LABEL, REPORT_STATUS_LABEL, STATUS_LABEL } from '../data/types';
 import { fmtDate, fmtDayMonth, fmtRange, fmtStamp, fmtTime, plural } from '../lib/date';
@@ -68,16 +69,34 @@ function ReportView({ id }: { id: string }) {
   const me = useMe();
   const L = useLookup();
   const r = s.reports.find((x) => x.id === id);
-  const [form, setForm] = useState({ conclusions: '', problems: '', plan: '' });
+  const draft = useDraft(`report:${id}`, { conclusions: r?.conclusions ?? '', problems: r?.problems ?? '', plan: r?.plan ?? '' }, r?.updatedAt ?? '');
+  const form = draft.value, setForm = draft.set;
+  const [busy, setBusy] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [err, setErr] = useState('');
-  useEffect(() => { if (r) setForm({ conclusions: r.conclusions, problems: r.problems, plan: r.plan }); }, [r?.id, r?.status]); // eslint-disable-line
   if (!r || !P.canSeeReport(me, r)) return <Empty icon={FileText} title="Отчёт недоступен" text="Отчёт не найден или не входит в доступные вашей роли." action={<Button onClick={() => go('/reports')}>К отчётам</Button>} />;
   const d = reportData(s, r.districtId, r.weekStart);
   const editable = P.canEditReport(me, r);
   const dirty = form.conclusions !== r.conclusions || form.problems !== r.problems || form.plan !== r.plan;
-  const save = () => run(() => saveReport(r.id, form), 'Отчёт сохранён');
+  const save = async () => {
+    setBusy(true);
+    try {
+      const ok = await saveWithConfirmation(() => saveReport(r.id, form));
+      if (ok) { draft.confirm(form); toast('Отчёт сохранён'); }
+      else toast('Сохранение не подтверждено. Текст остался в черновике.', 'error');
+      return ok;
+    } catch (error) { toast((error as Error).message, 'error'); return false; }
+    finally { setBusy(false); }
+  };
+  const send = async () => {
+    if (busy || (dirty && !await save())) return;
+    setBusy(true);
+    try {
+      if (await saveWithConfirmation(() => sendReport(r.id))) { draft.confirm(form); toast('Отчёт отправлен руководителю'); }
+    } catch (error) { toast((error as Error).message, 'error'); }
+    finally { setBusy(false); }
+  };
   return (
     <>
       <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => go('/reports')} style={{ marginBottom: 10 }} className="no-print">Все отчёты</Button>
@@ -147,12 +166,13 @@ function ReportView({ id }: { id: string }) {
             <h2>Комментарий координатора</h2>
             {editable ? (
               <>
+                <DraftNotice draft={draft} />
                 <Field label="Выводы" required hint="Главное за неделю в 2–3 предложениях"><Textarea rows={4} value={form.conclusions} onChange={(e) => setForm({ ...form, conclusions: e.target.value })} /></Field>
                 <Field label="Проблемы"><Textarea rows={3} value={form.problems} onChange={(e) => setForm({ ...form, problems: e.target.value })} /></Field>
                 <Field label="План на следующую неделю"><Textarea rows={3} value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></Field>
                 <div className="row wrap no-print">
-                  <Button icon={Save} disabled={!dirty} onClick={save}>Сохранить черновик</Button>
-                  <Button variant="primary" icon={Send} onClick={() => { if (dirty) saveReport(r.id, form); run(() => sendReport(r.id), 'Отчёт отправлен руководителю'); }}>Отправить</Button>
+                  <Button icon={Save} disabled={!dirty || busy} onClick={save}>Сохранить черновик</Button>
+                  <Button disabled={busy} variant="primary" icon={Send} onClick={send}>{busy ? 'Сохраняю…' : 'Отправить'}</Button>
                 </div>
               </>
             ) : (

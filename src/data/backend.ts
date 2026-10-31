@@ -4,9 +4,9 @@
 import { sb, FUNCTIONS_URL } from '../lib/supabase';
 import type { AuditItem, Brief, CalEvent, DailyReport, District, Metric, Notification, PdPlan, Report, State, Task, User, Weights } from './types';
 
-type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports' | 'media_briefs';
-export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications' | 'dailyReports' | 'briefs';
-export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications', dailyReports: 'daily_reports', briefs: 'media_briefs' };
+type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports' | 'media_briefs' | 'task_templates' | 'task_schedules' | 'media_matches';
+export type Collection = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'users' | 'notifications' | 'dailyReports' | 'briefs' | 'taskTemplates' | 'taskSchedules' | 'mediaMatches';
+export const TABLE_OF: Record<Collection, Table> = { tasks: 'tasks', events: 'events', reports: 'reports', districts: 'districts', metrics: 'metrics', users: 'profiles', notifications: 'notifications', dailyReports: 'daily_reports', briefs: 'media_briefs', taskTemplates: 'task_templates', taskSchedules: 'task_schedules', mediaMatches: 'media_matches' };
 export const COLLECTION_OF: Record<string, Collection> = Object.fromEntries(Object.entries(TABLE_OF).map(([c, t]) => [t, c])) as Record<string, Collection>;
 
 const RLS_MSG = 'Недостаточно прав для этого действия. Обратитесь к координатору или руководителю.';
@@ -66,8 +66,8 @@ interface Change { table: Table; op: 'insert' | 'update'; id: string; data: unkn
 export function diff(prev: State, next: State, uid: string): { changes: Change[]; weights?: Weights; pdPlan?: PdPlan } {
   const changes: Change[] = [];
   (Object.keys(TABLE_OF) as Collection[]).forEach((c) => {
-    const before = new Map((prev[c] as { id: string }[]).map((x) => [x.id, JSON.stringify(x)]));
-    for (const item of next[c] as { id: string; userId?: string }[]) {
+    const before = new Map(((prev[c] ?? []) as { id: string }[]).map((x) => [x.id, JSON.stringify(x)]));
+    for (const item of (next[c] ?? []) as { id: string; userId?: string }[]) {
       const old = before.get(item.id);
       const now = JSON.stringify(item);
       if (old === now) continue;
@@ -82,33 +82,53 @@ export function diff(prev: State, next: State, uid: string): { changes: Change[]
 }
 
 /** Отправить изменения по очереди. Возвращает документы в серверной версии. */
-export async function push(changes: Change[], weights?: Weights, pdPlan?: PdPlan) {
+export async function push(changes: Change[], weights?: Weights, pdPlan?: PdPlan, signal = new AbortController().signal) {
   const db = sb!;
   const saved: { table: Table; data: unknown }[] = [];
   for (const ch of changes) {
     if (ch.table === 'notifications') {
       const row = { id: ch.id, user_id: ch.userId, data: ch.data };
-      const { error } = ch.op === 'insert' ? await db.from('notifications').insert(row) : await db.from('notifications').update({ data: ch.data }).eq('id', ch.id);
+      const { error } = await (ch.op === 'insert' ? db.from('notifications').insert(row) : db.from('notifications').update({ data: ch.data }).eq('id', ch.id)).abortSignal(signal);
       if (error && !/duplicate/.test(error.message)) throw new Error(humanError(error.message));
       continue;
     }
     const q = ch.op === 'insert'
       ? db.from(ch.table).insert({ id: ch.id, data: ch.data }).select('data')
       : db.from(ch.table).update({ data: ch.data }).eq('id', ch.id).select('data');
-    const { data, error } = await q;
+    const { data, error } = await q.abortSignal(signal);
     if (error) throw new Error(humanError(error.message));
     if (!data?.length) throw new Error(RLS_MSG);
     saved.push({ table: ch.table, data: data[0].data });
   }
   if (weights) {
-    const { error } = await db.from('settings').upsert({ key: 'weights', value: weights });
+    const { error } = await db.from('settings').upsert({ key: 'weights', value: weights }).abortSignal(signal);
     if (error) throw new Error(humanError(error.message));
   }
   if (pdPlan) {
-    const { error } = await db.from('settings').upsert({ key: 'pd_plan', value: pdPlan });
+    const { error } = await db.from('settings').upsert({ key: 'pd_plan', value: pdPlan }).abortSignal(signal);
     if (error) throw new Error(humanError(error.message));
   }
   return saved;
+}
+
+/** Optional collections never delay or break the existing application's startup. */
+export async function loadWorkflows(signal: AbortSignal) {
+  const keys = ['taskTemplates', 'taskSchedules', 'mediaMatches'] as const;
+  const rows = await Promise.all(keys.map((key) => sb!.from(TABLE_OF[key]).select('data').abortSignal(signal)));
+  const error = rows.find((row) => row.error)?.error;
+  if (error) throw new Error(humanError(error.message));
+  return Object.fromEntries(keys.map((key, i) => [key, (rows[i].data ?? []).map((row) => row.data)])) as Pick<State, typeof keys[number]>;
+}
+
+export async function launchWorkflow(input: import('./workflow-types').WorkflowLaunch, signal: AbortSignal) {
+  const { data, error } = await sb!.rpc('launch_task_workflow', { request_id: input.requestId, body: input.body, targets: input.targets, due: input.due, repeat_rule: input.repeat }).abortSignal(signal);
+  if (error) throw new Error(humanError(error.message));
+  return data as import('./workflow-types').WorkflowResult;
+}
+export async function findTask(id: string, signal: AbortSignal): Promise<Task | null> {
+  const { data, error } = await sb!.from('tasks').select('data').eq('id', id).abortSignal(signal).maybeSingle();
+  if (error) throw new Error(humanError(error.message));
+  return (data?.data as Task | undefined) ?? null;
 }
 
 /* ───────── Серверные функции ───────── */

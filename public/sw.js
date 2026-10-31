@@ -1,6 +1,6 @@
 // Сервис-воркер: приложение открывается как программа и запускается без сети.
 // Данные из Supabase и Telegram не кешируются — только оболочка сайта.
-const CACHE = 'kc-v3-sidebar-fix';
+const CACHE = 'kc-v4-workflows';
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png', './logo-light.png', './logo-dark.png']))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {

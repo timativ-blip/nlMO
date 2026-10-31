@@ -78,6 +78,8 @@ export interface TaskResult {
 
 export interface Task {
   id: string;
+  batchId?: string;
+  scheduleId?: string;
   title: string;
   description: string;
   assigneeId: string;
@@ -204,6 +206,10 @@ export interface State {
   users: User[];
   districts: District[];
   tasks: Task[];
+  taskTemplates?: import('./workflow-types').TaskTemplate[];
+  taskSchedules?: import('./workflow-types').TaskSchedule[];
+  mediaMatches?: import('./workflow-types').MediaMatch[];
+  workflowRequests?: Record<string, string>;
   events: CalEvent[];
   reports: Report[];
   dailyReports: DailyReport[];

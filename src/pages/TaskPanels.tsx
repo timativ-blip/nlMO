@@ -2,14 +2,15 @@ import { AlertTriangle, Ban, CalendarDays, Check, ChevronDown, ChevronUp, Histor
 import { useEffect, useMemo, useState } from 'react';
 import { isOnTime, isOverdue, taskPoints } from '../data/calc';
 import * as P from '../data/perm';
-import { addAttachment, addCheck, addComment, confirmTask, createTask, returnTask, setTaskStatus, submitResult, toggleCheck, updateTask, useAppState, validateTask, type TaskInput } from '../data/store';
+import { addAttachment, addCheck, addComment, confirmTask, createTaskConfirmed, returnTask, saveWithConfirmation, setTaskStatus, submitResult, toggleCheck, uid, updateTask, useAppState, validateTask, type TaskInput } from '../data/store';
 import type { Attachment, Priority, Task } from '../data/types';
 import { PRIORITY_LABEL } from '../data/types';
 import { addDays, fmtAgo, fmtDate, fmtDayMonth, fmtStamp, relDue, todayISO } from '../lib/date';
 import { closeNewTask, openEvent, openTask, useGlobal } from '../ui/global';
 import { useLookup, useMe } from '../ui/hooks';
-import { Avatar, Button, Drawer, Field, Input, Modal, PriorityTag, run, Select, Textarea, TaskStatusBadges } from '../ui/kit';
+import { Avatar, Button, Drawer, Field, Input, Modal, PriorityTag, run, Select, Textarea, TaskStatusBadges, toast } from '../ui/kit';
 import { AttachmentInput, AttachmentView, PeoplePicker } from '../ui/widgets';
+import { DraftNotice, useDraft } from '../ui/drafts';
 
 const PRIORITIES = (Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
 
@@ -23,48 +24,59 @@ export function useAssignable(districtId?: string) {
 /* ───────── Быстрое создание ───────── */
 export function NewTaskModal() {
   const g = useGlobal();
+  return g.newTask ? <NewTaskForm key={JSON.stringify(g.newTask)} prefill={g.newTask} /> : null;
+}
+function NewTaskForm({ prefill }: { prefill: Partial<TaskInput> }) {
   const s = useAppState();
   const me = useMe();
   const L = useLookup();
-  const open = !!g.newTask;
-  const [v, setV] = useState<TaskInput>(() => blank());
-  const [more, setMore] = useState(false);
   const [errs, setErrs] = useState<Record<string, string>>({});
-  const [checklist, setChecklist] = useState('');
-  const [links, setLinks] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [requestId] = useState(() => uid('t'));
   function blank(): TaskInput {
     return { title: '', assigneeId: '', districtId: me.role === 'coordinator' ? me.districtId! : '', due: addDays(todayISO(), 3), priority: 'normal', coAssigneeIds: [], description: '', metricId: null, eventId: null };
   }
-  useEffect(() => {
-    if (open) { setV({ ...blank(), ...g.newTask }); setErrs({}); setMore(!!(g.newTask?.eventId || g.newTask?.metricId)); setChecklist(''); setLinks(''); }
-  }, [open]); // eslint-disable-line
+  const formKey = `new-task:${prefill.districtId ?? ''}:${prefill.assigneeId ?? ''}:${prefill.eventId ?? ''}:${prefill.metricId ?? ''}`;
+  const draft = useDraft(formKey, { requestId, input: { ...blank(), ...prefill }, more: !!(prefill.eventId || prefill.metricId), checklist: (prefill.checklist ?? []).join('\n'), links: (prefill.links ?? []).join('\n') });
+  const { input: v, more, checklist, links } = draft.value;
+  const setMore = (more: boolean) => draft.set((x) => ({ ...x, more }));
+  const setChecklist = (checklist: string) => draft.set((x) => ({ ...x, checklist }));
+  const setLinks = (links: string) => draft.set((x) => ({ ...x, links }));
   const people = useAssignable(v.districtId || undefined);
   const districts = s.districts.filter((d) => P.canAssignIn(me, d.id));
-  const set = (p: Partial<TaskInput>) => { setV((x) => ({ ...x, ...p })); setErrs((e) => { const n = { ...e }; Object.keys(p).forEach((k) => delete n[k]); return n; }); };
+  const set = (p: Partial<TaskInput>) => { draft.set((x) => ({ ...x, input: { ...x.input, ...p } })); setErrs((e) => { const n = { ...e }; Object.keys(p).forEach((k) => delete n[k]); return n; }); };
   const onAssignee = (id: string) => {
     const u = L.user(id);
     set({ assigneeId: id, ...(u?.districtId && !v.districtId ? { districtId: u.districtId } : {}) });
   };
-  const submit = (another = false) => {
+  const submit = async (another = false) => {
+    if (busy) return;
     const e = validateTask(v);
     if (Object.keys(e).length) { setErrs(e); return; }
     let id = '';
-    const ok = run(() => { id = createTask({ ...v, checklist: checklist.split('\n'), links: links.split(/\s+/) }); }, `Задача создана и назначена: ${L.user(v.assigneeId)?.name}`);
-    if (!ok) return;
-    if (another) { setV({ ...blank(), districtId: v.districtId, assigneeId: v.assigneeId }); setChecklist(''); setLinks(''); }
-    else { closeNewTask(); openTask(id); }
+    const submitted = draft.value;
+    setBusy(true);
+    try {
+      id = await createTaskConfirmed({ ...v, checklist: checklist.split('\n'), links: links.split(/\s+/) }, draft.value.requestId);
+      toast(`Задача создана и назначена: ${L.user(v.assigneeId)?.name}`);
+      if (another) draft.confirm(submitted, { requestId: uid('t'), input: { ...blank(), districtId: v.districtId, assigneeId: v.assigneeId }, checklist: '', links: '', more });
+      else { draft.confirm(submitted); closeNewTask(); openTask(id); }
+    } catch (error) { setErrs({ form: (error as Error).message }); }
+    finally { setBusy(false); }
   };
   if (!P.canCreateTask(me)) return null;
   const events = s.events.filter((e) => !e.cancelled && e.start >= todayISO() && (!v.districtId || e.districtId === v.districtId || e.districtId === null)).sort((a, b) => a.start.localeCompare(b.start)).slice(0, 30);
   return (
-    <Modal open={open} onClose={closeNewTask} title="Новая задача" width={620}
+    <Modal open onClose={() => { if (!busy) closeNewTask(); }} title="Новая задача" width={620}
       footer={<>
         <span className="small muted hide-sm" style={{ marginRight: 'auto', alignSelf: 'center' }}>Ctrl + Enter — создать</span>
-        <Button variant="ghost" onClick={closeNewTask}>Отмена</Button>
-        <Button onClick={() => submit(true)} className="hide-sm">Создать и ещё одну</Button>
-        <Button variant="primary" icon={Check} onClick={() => submit()}>Создать задачу</Button>
+        <Button disabled={busy} variant="ghost" onClick={closeNewTask}>Отмена</Button>
+        <Button disabled={busy} onClick={() => submit(true)} className="hide-sm">Создать и ещё одну</Button>
+        <Button disabled={busy} variant="primary" icon={Check} onClick={() => submit()}>{busy ? 'Сохраняю…' : 'Создать задачу'}</Button>
       </>}>
       <form className="col" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); submit(); }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}>
+        <DraftNotice draft={draft} />
+        {errs.form && <div className="callout danger" role="alert">{errs.form}</div>}
         <Field label="Что нужно сделать" required error={errs.title}>
           <Input autoFocus placeholder="Например: Провести встречу с жителями ЖК «Солнечный»" value={v.title} invalid={!!errs.title} onChange={(e) => set({ title: e.target.value })} maxLength={200} />
         </Field>
@@ -108,24 +120,37 @@ export function NewTaskModal() {
 
 /* ───────── Сдача результата ───────── */
 export function SubmitModal({ task, onClose }: { task: Task | null; onClose: () => void }) {
+  return task ? <SubmitForm key={task.id} task={task} onClose={onClose} /> : null;
+}
+function SubmitForm({ task, onClose }: { task: Task; onClose: () => void }) {
   const L = useLookup();
-  const [text, setText] = useState('');
-  const [value, setValue] = useState('');
-  const [att, setAtt] = useState<Attachment[]>([]);
+  const draft = useDraft(`result:${task.id}`, { text: '', value: '', att: [] as Attachment[] });
+  const { text, value, att } = draft.value;
+  const setText = (text: string) => draft.set((x) => ({ ...x, text }));
+  const setValue = (value: string) => draft.set((x) => ({ ...x, value }));
+  const setAtt = (att: Attachment[]) => draft.set((x) => ({ ...x, att }));
   const [errs, setErrs] = useState<Record<string, string>>({});
-  useEffect(() => { if (task) { setText(''); setValue(''); setAtt([]); setErrs({}); } }, [task?.id]);
-  if (!task) return null;
+  const [busy, setBusy] = useState(false);
   const m = task.metricId ? L.metrics.get(task.metricId) : null;
-  const send = () => {
+  const send = async () => {
+    if (busy) return;
     const e: Record<string, string> = {};
     if (text.trim().length < 5) e.text = 'Опишите, что сделано — хотя бы одно предложение.';
     if (m && (value === '' || isNaN(+value) || +value < 0)) e.value = `Укажите число ${m.unit} — это попадёт в показатель «${m.name}».`;
     if (Object.keys(e).length) { setErrs(e); return; }
-    if (run(() => submitResult(task.id, { text, value: m ? +value : undefined, attachments: att }), 'Результат отправлен на проверку координатору')) onClose();
+    const submitted = draft.value;
+    setBusy(true);
+    try {
+      if (!await saveWithConfirmation(() => submitResult(task.id, { text, value: m ? +value : undefined, attachments: att }))) { setErrs({ form: 'Не удалось подтвердить отправку. Черновик сохранён на устройстве.' }); return; }
+      draft.confirm(submitted); toast('Результат отправлен на проверку координатору'); onClose();
+    } catch (error) { setErrs({ form: (error as Error).message }); }
+    finally { setBusy(false); }
   };
   return (
-    <Modal open onClose={onClose} title="Сдать результат" width={600} footer={<><Button variant="ghost" onClick={onClose}>Отмена</Button><Button variant="primary" icon={Send} onClick={send}>Отправить на проверку</Button></>}>
+    <Modal open onClose={() => { if (!busy) onClose(); }} title="Сдать результат" width={600} footer={<><Button disabled={busy} variant="ghost" onClick={onClose}>Отмена</Button><Button disabled={busy} variant="primary" icon={Send} onClick={send}>{busy ? 'Отправляю…' : 'Отправить на проверку'}</Button></>}>
       <div className="col" style={{ gap: 14 }}>
+        <DraftNotice draft={draft} />
+        {errs.form && <div className="callout danger" role="alert">{errs.form}</div>}
         <div className="callout info"><Target size={16} style={{ flex: 'none', marginTop: 2 }} /><span><b>{task.title}</b><br />Срок: {fmtDate(task.due)}{task.due < todayISO() ? ' — срок прошёл, результат будет учтён как сданный с опозданием' : ''}</span></div>
         <Field label="Что сделано" required error={errs.text}><Textarea autoFocus rows={4} invalid={!!errs.text} value={text} onChange={(e) => { setText(e.target.value); setErrs({ ...errs, text: '' }); }} placeholder="Коротко: что сделали, сколько людей участвовало, что важно знать" /></Field>
         {m && (
