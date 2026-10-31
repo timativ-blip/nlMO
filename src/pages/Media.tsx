@@ -9,7 +9,9 @@ import { MONTHS_NOM, plural } from '../lib/date';
 import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
 import { MoMap } from '../ui/widgets';
 import BriefsView from './Briefs';
-import { DEMO_MODE, getState } from '../data/store';
+import { DEMO_MODE, getState, useAppState } from '../data/store';
+import { applyMediaMatches } from '../data/media-matches';
+import { MediaAssignments, MediaMatchForm } from './MediaAssignments';
 import { demoMedia } from '../data/demo-media';
 import { loadMediaTimeline, mediaMonth, mediaMonths, mediaSeasonTitle } from '../data/media-season';
 import { withDeadline } from '../lib/deadline';
@@ -32,6 +34,7 @@ function reasonOf(t: string) {
 }
 
 export function useJson<T>(name: string, everyMs: number) {
+  const state = useAppState();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -58,7 +61,8 @@ export function useJson<T>(name: string, everyMs: number) {
     const t = setInterval(load, everyMs);
     return () => { alive = false; clearInterval(t); };
   }, [name, everyMs]);
-  return { data, error };
+  const resolved = useMemo(() => name === 'media-pd' && data ? applyMediaMatches(data as unknown as PdData, state.mediaMatches ?? [], state.users) as T : data, [name, data, state.mediaMatches, state.users]);
+  return { data: resolved, error };
 }
 
 interface Person { i: number; name: string; g: string; pts: number; ptsOk: number; ptsBad: number; contrib: number; views: number; likes: number; posts: number; okPosts: number; bad: number; reasons: Map<string, number>; src: Partial<Record<Src, { pts: number; views: number; posts: number }>> }
@@ -212,7 +216,7 @@ function OkrView({ A, open }: { A: Calc; open: Opener }) {
       <Podium items={items.slice(0, 3)} />
       <RankRows items={items.slice(3)} start={3} />
       {extra.length > 0 && <><h2 className="sec-title">Вне рейтинга округов</h2><RankRows items={extra} /></>}
-      <p className="small muted">Нажмите на округ, чтобы увидеть авторов. «Без округа» — авторы из таблицы, которых нет в списке по округам: добавьте их в документ со списком, и их посты засчитаются округу.</p>
+      <p className="small muted">Нажмите на округ, чтобы увидеть авторов. Во вкладке «Без округа» можно сопоставить автора с человеком из команды или округом. Привязки из исходного документа имеют приоритет.</p>
     </>
   );
 }
@@ -248,9 +252,9 @@ function LooseView({ A, open }: { A: Calc; open: Opener }) {
   const item = (a: Person, k: number) => ({ key: String(a.i), name: a.name, rank: String(k + 1), flag: a.bad ? `!${a.bad}` : '', tip: tipFor(a), onClick: () => open('p', String(a.i)), sub: `${a.posts} ${posts_(a.posts)} · ${fmt(a.views)} просмотров`, val: fmt(a[m]) });
   return (
     <>
-      <div className="toolbar"><Segmented label="Показатель" value={m} onChange={setM} options={[{ value: 'pts', label: 'Баллы' }, { value: 'views', label: 'Просмотры' }, { value: 'posts', label: 'Посты' }]} /><span className="spacer" /><span className="pill">{list.length} {authors_(list.length)} не привязаны к округу</span></div>
+      <div className="toolbar"><Segmented label="Показатель" value={m} onChange={setM} options={[{ value: 'pts', label: 'Баллы' }, { value: 'views', label: 'Просмотры' }, { value: 'posts', label: 'Посты' }]} /><span className="spacer" /><MediaAssignments /><span className="pill">{list.length} {authors_(list.length)} не привязаны к округу</span></div>
       {!list.length ? <div className="card"><Empty icon={Search} title="Все авторы привязаны к округам" /></div> : <><Podium items={list.slice(0, 3).map(item)} /><RankRows items={list.slice(3).map((a, k) => item(a, k + 3))} start={3} /></>}
-      <p className="small muted">Эти авторы пишут посты в «Пиши-Делись», но их нет в документе со списком по округам — их баллы не идут ни одному округу. Впишите человека в нужный округ в документе, и через минуту-две он переедет в рейтинг своего округа.</p>
+      <p className="small muted">Откройте автора, чтобы сопоставить его с человеком и округом прямо здесь. Можно также исправить исходный документ — его привязки имеют приоритет.</p>
     </>
   );
 }
@@ -318,6 +322,7 @@ function PersonSheet({ A, i, open }: { A: Calc; i: number; open: Opener }) {
   return (
     <>
       <h1 style={{ fontSize: 30 }}>{a.name}</h1>
+      {a.g === 'none' && <MediaMatchForm key={a.name} sourceName={a.name} onSaved={(group) => open('g', group)} />}
       <div className="row wrap" style={{ marginTop: 10 }}><button className="pill" onClick={() => open('g', a.g, true)}>{A.label(a.g)}</button>{place > 0 && <span className="pill pill-ink">{place} место в области</span>}</div>
       <div className="mstats"><Stat v={fmt(a.pts)} t={a.bad ? 'баллов с невыполненными' : 'баллов'} />{a.bad > 0 && <Stat v={fmt(a.ptsOk)} t="баллов без них" />}<Stat v={fmt(a.posts)} t={posts_(a.posts)} /><Stat v={fmt(a.views)} t="просмотров" /><Stat v={fmt(a.likes)} t="лайков" /></div>
       {a.bad > 0 && <div className="callout danger" style={{ marginBottom: 12 }}><span><b>Не выполнены условия в {a.bad} {posts_(a.bad)} · {fmt(a.ptsBad)} б.</b><br />{[...a.reasons].map(([k, n]) => `${k} — ${n}`).join('; ')}</span></div>}

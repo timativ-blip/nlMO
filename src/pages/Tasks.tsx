@@ -12,6 +12,7 @@ import { useLookup, useMe } from '../ui/hooks';
 import { Avatar, Button, Empty, PriorityTag, run, Segmented, TaskStatusBadges, toast } from '../ui/kit';
 import { ReturnModal, SubmitModal } from './TaskPanels';
 import { confirmTask } from '../data/store';
+import TaskWorkflows from './TaskWorkflows';
 
 type DueFilter = '' | 'today' | 'week' | 'next' | 'none';
 interface Filters { q: string; mine: boolean; district: string; assignee: string; status: string; due: DueFilter; priority: string; overdue: boolean }
@@ -22,6 +23,7 @@ export default function TasksPage({ route }: { route: Route }) {
   const s = useAppState();
   const me = useMe();
   const L = useLookup();
+  const [workflowTab, setWorkflowTab] = useState<'launch' | 'templates' | null>(null);
   const [f, setF] = useState<Filters>(() => {
     try { return { ...EMPTY, ...(JSON.parse(sessionStorage.getItem(FKEY) || 'null') ?? (me.role === 'member' ? { mine: true } : {})) }; } catch { return EMPTY; }
   });
@@ -69,7 +71,7 @@ export default function TasksPage({ route }: { route: Route }) {
           <div className="sub">{me.role === 'member' ? 'Ваши задачи и задачи, где вы соисполнитель' : me.role === 'coordinator' ? `Задачи округа ${L.dname(me.districtId)}` : 'Все задачи области'}</div>
         </div>
         <Segmented label="Вид" value={view} onChange={(v) => setUi({ taskView: v })} options={[{ value: 'list', label: 'Список', icon: List }, { value: 'kanban', label: 'Канбан', icon: Columns3 }]} />
-        {P.canCreateTask(me) && <Button variant="primary" icon={Plus} onClick={() => openNewTask()} className="hide-sm">Новая задача <span className="kbd" style={{ color: '#d9f3ef', borderColor: 'rgba(255,255,255,.3)', background: 'transparent' }}>N</span></Button>}
+        {P.canCreateTask(me) && <><Button onClick={() => setWorkflowTab('launch')}>По округам</Button><Button onClick={() => setWorkflowTab('templates')}>Шаблоны и повторения</Button><Button variant="primary" icon={Plus} onClick={() => openNewTask()} className="hide-sm">Новая задача <span className="kbd" style={{ color: '#d9f3ef', borderColor: 'rgba(255,255,255,.3)', background: 'transparent' }}>N</span></Button></>}
       </div>
 
       <div className="toolbar" role="search">
@@ -88,6 +90,7 @@ export default function TasksPage({ route }: { route: Route }) {
       </div>
 
       {view === 'list' ? <TaskTable list={list} hasFilters={activeCount > 0} onReset={() => setF(EMPTY)} /> : <Kanban list={list.concat(f.status === 'active' ? [] : [])} all={visible} filters={f} />}
+      {workflowTab && <TaskWorkflows initial={workflowTab} onClose={() => setWorkflowTab(null)} />}
     </>
   );
 }

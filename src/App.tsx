@@ -2,7 +2,7 @@ import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, Che
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
-import { DEMO_MODE, markRead, onSaveError, signOut, switchUser, useAppState, usePhase, useSyncing } from './data/store';
+import { DEMO_MODE, loadWorkflowData, markRead, onSaveError, signOut, switchUser, useAppState, usePhase, useSyncing } from './data/store';
 import AuthGate from './pages/Auth';
 import type { Notification } from './data/types';
 import { roleLabel } from './data/types';
@@ -59,6 +59,7 @@ function Workspace() {
   const toggleSidebar = () => { const next = !collapsed; setCollapsed(next); try { localStorage.setItem('kc-sidebar-collapsed', next ? '1' : '0'); } catch { /* optional preference */ } };
 
   const syncing = useSyncing();
+  useEffect(() => { void loadWorkflowData(); const timer = setInterval(() => { void loadWorkflowData(); }, 60000); return () => clearInterval(timer); }, [me.id]);
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
   useEffect(() => {
     const title = NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'profile' ? 'Профиль' : page === 'settings' ? 'Настройки' : page === 'import' ? 'Импорт' : '');

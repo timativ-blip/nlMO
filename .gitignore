@@ -6,3 +6,5 @@ dist
 .test-build
 .test-startup
 .test-media
+.test-workflows
+supabase/.temp/
