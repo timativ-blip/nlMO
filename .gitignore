@@ -8,4 +8,5 @@ dist
 .test-media
 .test-workflows
 .test-telegram
+.test-connection
 supabase/.temp/
