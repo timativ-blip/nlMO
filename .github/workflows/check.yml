@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run test:analytics
       - run: npm run test:startup
+      - run: npm run test:connection
       - run: npm run test:media
       - run: npm run test:workflows
       - run: npm run test:telegram

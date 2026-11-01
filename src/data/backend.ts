@@ -1,7 +1,7 @@
 // Синхронизация состояния приложения с Supabase.
 // Локальное состояние меняется сразу (как в демо), затем изменённые документы отправляются в базу,
 // где их заново проверяют RLS и триггеры. Ответ сервера (с серверными полями) возвращается в состояние.
-import { sb, FUNCTIONS_URL } from '../lib/supabase';
+import { sb, FUNCTIONS_URL, backendUrl } from '../lib/supabase';
 import type { AuditItem, Brief, CalEvent, DailyReport, District, Metric, Notification, PdPlan, Report, State, Task, User, Weights } from './types';
 
 type Table = 'tasks' | 'events' | 'reports' | 'districts' | 'metrics' | 'profiles' | 'notifications' | 'daily_reports' | 'media_briefs' | 'task_templates' | 'task_schedules' | 'media_matches';
@@ -188,6 +188,7 @@ export async function signedUrl(ref: string) {
   if (hit && hit.until > Date.now()) return hit.url;
   const { data, error } = await sb!.storage.from('attachments').createSignedUrl(ref.slice(STORAGE_PREFIX.length), 3600);
   if (error || !data) return '';
-  signed.set(ref, { url: data.signedUrl, until: Date.now() + 50 * 60e3 });
-  return data.signedUrl;
+  const url = backendUrl(data.signedUrl);
+  signed.set(ref, { url, until: Date.now() + 50 * 60e3 });
+  return url;
 }

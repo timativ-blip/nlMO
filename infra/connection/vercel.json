@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/auth/v1/:path*", "destination": "https://wlqwwhshqrqanapsnsik.supabase.co/auth/v1/:path*" },
+    { "source": "/rest/v1/:path*", "destination": "https://wlqwwhshqrqanapsnsik.supabase.co/rest/v1/:path*" },
+    { "source": "/storage/v1/:path*", "destination": "https://wlqwwhshqrqanapsnsik.supabase.co/storage/v1/:path*" },
+    { "source": "/functions/v1/:path*", "destination": "https://wlqwwhshqrqanapsnsik.supabase.co/functions/v1/:path*" }
+  ],
+  "headers": [
+    {
+      "source": "/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" },
+        { "key": "x-vercel-enable-rewrite-caching", "value": "0" }
+      ]
+    }
+  ]
+}
