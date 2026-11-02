@@ -82,7 +82,13 @@ export async function loadCommunications() {
     try {
       const index = await communicationsRpc<CommunicationIndex>('index');
       if (current !== generation) return;
-      emit({ ...index, clockOffset: Date.parse(index.serverTime) - (started + Date.now()) / 2, ready: true, loading: false, error: '' });
+      const details = { ...state.details };
+      for (const meeting of index.meetings) if (details[meeting.id]) {
+        const invitations = new Map(details[meeting.id].invitations.map(invitation => [invitation.id, invitation]));
+        for (const invitation of index.invitations) if (invitation.meetingId === meeting.id) invitations.set(invitation.id, invitation);
+        details[meeting.id] = { ...details[meeting.id], meeting, invitations: [...invitations.values()] };
+      }
+      emit({ ...index, details, clockOffset: Date.parse(index.serverTime) - (started + Date.now()) / 2, ready: true, loading: false, error: '' });
       for (const conversation of index.conversations) if (conversation.lastMessage?.senderId !== state.userId && conversation.lastMessage?.id && !conversation.lastMessage.deliveredAt) acknowledgeDelivered(conversation.id, [conversation.lastMessage.id]);
     } catch (error) { if (current === generation) emit({ loading: false, error: errorText(error) }); }
     finally { if (current === generation) { loading = null; if (reloadRequested) { reloadRequested = false; void loadCommunications(); } } }
@@ -178,11 +184,11 @@ export async function loadMeeting(id: string) {
   if (current === generation) emit({ details: { ...state.details, [id]: detail } });
   return detail;
 }
-export async function createMeeting(title: string, inviteOnly = false, peerId?: string, requestId: string = crypto.randomUUID()) {
+export async function createMeeting(title: string, inviteOnly = false, peerId?: string, requestId: string = crypto.randomUUID(), options: { scheduledAt?: string; notifyAll?: boolean } = {}) {
   const current = generation;
-  const result = await videoApi<{ meeting: Meeting; conversationId?: string }>('create', { requestId, title, inviteOnly, ...(peerId ? { peerId } : {}) });
+  const result = await videoApi<{ meeting: Meeting; conversationId?: string }>('create', { requestId, title, inviteOnly, ...options, ...(peerId ? { peerId } : {}) });
   if (current !== generation) throw new Error('Учётная запись изменилась.');
-  emit({ panelOpen: false });
+  emit({ panelOpen: false, callNotice: '' });
   await loadCommunications();
   go('/meetings/' + result.meeting.id); return result.meeting;
 }
@@ -194,7 +200,7 @@ export async function respondInvitation(invitationId: string, response: 'accepte
   const key = invitationId + ':' + response, requestId = pendingInvitations.get(key) ?? crypto.randomUUID(); pendingInvitations.set(key, requestId);
   const invitation = await videoApi<Invitation>('respond', { invitationId, response, requestId }); pendingInvitations.delete(key);
   await loadCommunications();
-  if (current === generation && response === 'accepted') { go('/meetings/' + invitation.meetingId); await openPreparation(invitation.meetingId); }
+  if (current === generation && response === 'accepted') { go('/meetings/' + invitation.meetingId); const meeting = state.meetings.find(item => item.id === invitation.meetingId); if (!meeting?.scheduledAt || Date.parse(meeting.scheduledAt) <= Date.now() + state.clockOffset) await openPreparation(invitation.meetingId); }
 }
 export async function cancelInvitation(invitationId: string) { const key = invitationId + ':cancel', requestId = pendingInvitations.get(key) ?? crypto.randomUUID(); pendingInvitations.set(key, requestId); await videoApi('cancel_invite', { invitationId, requestId }); pendingInvitations.delete(key); await loadCommunications(); }
 export async function openPreparation(id: string) {
@@ -214,6 +220,12 @@ export function expandCall(expanded: boolean) { emit({ callExpanded: expanded })
 export async function moderateMeeting(mid: string, operation: 'end' | 'lock' | 'unlock' | 'remove' | 'mute', userId?: string, requestId: string = crypto.randomUUID()) {
   await videoApi('moderate', { meetingId: mid, operation, requestId, ...(userId ? { userId } : {}) }); await loadMeeting(mid); await loadCommunications();
   if (operation === 'end' && state.call?.meeting.id === mid) finishCall('Вы завершили встречу для всех.');
+}
+export async function announceMeeting(mid: string, requestId: string) {
+  await videoApi('announce', { meetingId: mid, requestId }); await loadMeeting(mid); await loadCommunications();
+}
+export async function rescheduleMeeting(mid: string, scheduledAt: string, requestId: string) {
+  await videoApi('schedule', { meetingId: mid, scheduledAt, requestId }); await loadMeeting(mid); await loadCommunications();
 }
 export const loadRoomMessages = (mid: string) => communicationsRpc<MeetingMessage[]>('room_messages', { meetingId: mid });
 export const sendRoomMessage = (mid: string, text: string, requestId: string) => communicationsRpc('room_send', { meetingId: mid, text, requestId });

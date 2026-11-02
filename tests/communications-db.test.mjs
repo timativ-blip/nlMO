@@ -21,6 +21,7 @@ before(async()=>{
  await db.exec(initial.slice(initial.indexOf('create table profiles'),initial.indexOf('-- Хранилище вложений')).replace(/select cron\.schedule\([^;]+;/g,'').replace(/alter publication supabase_realtime[^;]+;/g,''));
  await db.exec('grant usage on schema public to authenticated,anon,service_role;grant select on public.profiles to authenticated;');
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102075931_communications_and_meetings.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20261102100858_meeting_scheduling_notifications.sql',import.meta.url),'utf8'));
  for(const [name,id] of Object.entries(ids)){await db.query('insert into auth.users values($1)',[id]);await db.query('insert into profiles(id,data) values($1,$2::jsonb)',[id,JSON.stringify({id,name,role:name==='head'?'head':'member',active:true,pending:false})]);}
 });
 beforeEach(async()=>{await db.query("select set_config('request.jwt.claim.sub','',false)");await db.exec('truncate comm_private.requests,comm_private.grants,comm_private.controls,comm_private.webhooks,comm_conversations,comm_meetings,notifications cascade');await db.query("update profiles set data=data||'{\"active\":true,\"pending\":false}'::jsonb");});
@@ -133,4 +134,50 @@ test('private message and notification creation are atomic if the existing notif
  try{await assert.rejects(send(ids.alice,cid,'Повторяемая отправка',rid),/notification unavailable/);assert.equal(await scalar('select count(*)::int from comm_messages'),0);assert.equal(await scalar('select count(*)::int from comm_private.requests where request_id=$1',[rid]),0);}
  finally{await db.exec('drop trigger test_notice_failure on notifications;drop function comm_private.test_notification_fail()');}
  await send(ids.alice,cid,'Повторяемая отправка',rid);assert.equal(await scalar('select count(*)::int from comm_messages'),1);
+});
+test('future meetings last eight hours from their scheduled time and cannot admit media early',async()=>{
+ const scheduledAt=new Date(Date.now()+86400000).toISOString();const r=await create(ids.alice,{scheduledAt,notifyAll:true});
+ assert.equal(r.phase,'scheduled');assert.equal(r.canJoin,false);assert.equal(Date.parse(r.expiresAt)-Date.parse(r.scheduledAt),8*3600000);
+ assert.ok((await call(ids.third,'index')).meetings.some(item=>item.id===r.id));await assert.rejects(admit(ids.bob,r.id),/Подключение откроется/);
+ await assert.rejects(media('admission',{meetingId:r.id,userId:ids.bob,identity:randomUUID()}),/ещё не наступило/);
+ assert.equal((await media('event',{meetingId:r.id,identity:randomUUID(),event:'joined',eventId:randomUUID(),at:new Date().toISOString(),sid:'early'})).remove,true);
+ await assert.rejects(create(ids.alice,{scheduledAt:new Date(Date.now()-1000).toISOString()}),/будущее время/);
+});
+test('broadcast creation notifies each active colleague once, without affecting private calls or inactive accounts',async()=>{
+ await db.query("update profiles set data=data||'{\"pending\":true}'::jsonb where id=$1",[ids.third]);
+ const rid=randomUUID(),body={title:'Общая планёрка',scheduledAt:new Date(Date.now()+3600000).toISOString(),notifyAll:true,requestId:rid};
+ const first=await call(ids.alice,'create',body);assert.deepEqual(await call(ids.alice,'create',body),first);
+ assert.equal(await scalar('select count(*)::int from notifications'),3);assert.equal(await scalar('select count(*)::int from comm_private.meeting_notices'),1);
+ assert.equal(await scalar('select count(*)::int from notifications where user_id=$1',[ids.third]),0);
+ await assert.rejects(create(ids.alice,{notifyAll:true,inviteOnly:true}),/личной встречи/);
+});
+test('private scheduled invitations remain valid until the meeting ends and do not expose it to other staff',async()=>{
+ const r=await create(ids.alice,{scheduledAt:new Date(Date.now()+2*86400000).toISOString(),inviteOnly:true});
+ const [inv]=await call(ids.alice,'invite',{meetingId:r.id,userIds:[ids.bob],requestId:randomUUID()});assert.equal(inv.expiresAt,r.expiresAt);
+ await call(ids.bob,'respond',{invitationId:inv.id,response:'accepted',requestId:randomUUID()});
+ assert.ok((await call(ids.bob,'index')).meetings.some(item=>item.id===r.id));assert.ok(!(await call(ids.third,'index')).meetings.some(item=>item.id===r.id));
+ await assert.rejects(call(ids.third,'meeting',{meetingId:r.id}),/нужно приглашение/);assert.equal(await as(ids.third,()=>scalar('select count(*)::int from comm_meetings')),0);
+ assert.match(await scalar('select data->>\'text\' from notifications where id=$1',[inv.notification_id??await scalar('select notification_id from comm_invitations where id=$1',[inv.id])]),/МСК/);
+});
+test('server cron emits one reminder and one start notice, including the organizer, and skips duplicates',async()=>{
+ const r=await create(ids.alice,{scheduledAt:new Date(Date.now()+3600000).toISOString(),notifyAll:true});
+ await db.query("update comm_meetings set scheduled_at=now()+interval '14 minutes',schedule_updated_at=now()-interval '1 hour',expires_at=now()+interval '8 hours 14 minutes' where id=$1",[r.id]);
+ await db.exec('select comm_private.cleanup()');assert.equal(await scalar('select count(*)::int from notifications'),8);await db.exec('select comm_private.cleanup()');assert.equal(await scalar('select count(*)::int from notifications'),8);
+ await db.query("update comm_meetings set scheduled_at=now()-interval '1 second' where id=$1",[r.id]);await db.exec('select comm_private.cleanup()');assert.equal(await scalar('select count(*)::int from notifications'),12);await db.exec('select comm_private.cleanup()');assert.equal(await scalar('select count(*)::int from notifications'),12);
+ assert.equal((await call(ids.alice,'meeting',{meetingId:r.id})).meeting.canJoin,true);assert.ok((await admit(ids.bob,r.id)).identity);
+});
+test('only the organizer can reschedule or cancel, notices are idempotent and cancelled rooms never start',async()=>{
+ const r=await create(ids.alice,{scheduledAt:new Date(Date.now()+3600000).toISOString(),notifyAll:true});const body={meetingId:r.id,scheduledAt:new Date(Date.now()+2*3600000).toISOString(),requestId:randomUUID()};
+ await assert.rejects(call(ids.bob,'schedule',body),/организатор/);const updated=await call(ids.alice,'schedule',body);assert.equal(Date.parse(updated.scheduledAt),Date.parse(body.scheduledAt));assert.deepEqual(await call(ids.alice,'schedule',body),updated);assert.equal(await scalar('select count(*)::int from notifications'),8);
+ await assert.rejects(call(ids.bob,'control',{meetingId:r.id,action:'end',requestId:randomUUID()}),/организатору/);
+ const end={meetingId:r.id,action:'end',requestId:randomUUID()};await call(ids.alice,'control',end);await call(ids.alice,'control',end);assert.equal((await call(ids.alice,'meeting',{meetingId:r.id})).meeting.phase,'cancelled');assert.equal(await scalar('select count(*)::int from notifications'),12);
+ await db.exec('select comm_private.cleanup()');assert.equal(await scalar('select count(*)::int from notifications'),12);await assert.rejects(admit(ids.bob,r.id),/завершена/);
+ await assert.rejects(as(ids.bob,()=>scalar('select comm_private.dispatch_v1(\'index\',\'{}\')')),/permission denied/);
+});
+test('existing public rooms can announce to all once by organizer action, while private rooms stay private',async()=>{
+ const r=await create();assert.equal(r.notifyAll,false);assert.ok(!(await call(ids.bob,'index')).meetings.some(item=>item.id===r.id));
+ const body={meetingId:r.id,requestId:randomUUID()};await assert.rejects(call(ids.bob,'announce',body),/организатор/);
+ const announced=await call(ids.alice,'announce',body);assert.equal(announced.notifyAll,true);await call(ids.alice,'announce',body);await call(ids.alice,'announce',{...body,requestId:randomUUID()});
+ assert.equal(await scalar('select count(*)::int from notifications'),4);assert.ok((await call(ids.bob,'index')).meetings.some(item=>item.id===r.id));
+ const secret=await create(ids.alice,{inviteOnly:true});await assert.rejects(call(ids.alice,'announce',{meetingId:secret.id,requestId:randomUUID()}),/недоступно/);assert.ok(!(await call(ids.bob,'index')).meetings.some(item=>item.id===secret.id));
 });
