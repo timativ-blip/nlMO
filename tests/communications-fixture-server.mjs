@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { createClient } from '@supabase/supabase-js';
-import { createCommunicationsHandler } from '../.test-communications/communications-entry.js';
+import { createCommunicationsHandler, createDistrictDirectoryHandler } from '../.test-communications/communications-entry.js';
 const require = createRequire(import.meta.url); const { WebSocketServer } = require('ws');
 const port = Number(process.env.COMMUNICATIONS_TEST_PORT ?? 5192), base = `http://127.0.0.1:${port}`;
 const origin = 'http://127.0.0.1:5180';
@@ -54,6 +54,9 @@ async function broadcasts(before,after){
 }
 const admin=createClient(base,service,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 const media={url:'ws://127.0.0.1:7880',apiKey:'local-communications',apiSecret:'local-development-fixture-key-not-for-production'};
+let directoryNow=Date.now(), directoryName='Петухов Тимофей', directoryFail=false;
+const directoryHandler=createDistrictDirectoryHandler(async()=>new Response(directoryFail?'Unavailable':'№округа,Город,Координатор\n121,Красногорск,'+directoryName,{status:directoryFail?502:200}),()=>directoryNow);
+await db.query('insert into public.districts(id,data) values($1,$2::jsonb)',['121',JSON.stringify({id:'121',num:121,name:'Красногорский',cities:['Красногорск','Истра'],coordinatorId:null,coordinatorName:'Блюдин Алексей'})]);
 const handler=createCommunicationsHandler({admin,userClient:jwt=>createClient(base,'fixture-public-key',{global:{headers:{Authorization:'Bearer '+jwt}},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}),media,appOrigin:origin,allowLocalMedia:true,hookSecret:async()=> 'local-hook-not-for-production'});
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,base), chunks=[];for await(const chunk of req)chunks.push(chunk);const raw=Buffer.concat(chunks);
@@ -65,6 +68,8 @@ const server=createServer(async(req,res)=>{
   if(url.pathname==='/auth/v1/user'){if(!uid)return reply({message:'Invalid token'},401);const profile=profiles.find(profile=>profile.id===uid);return reply({id:uid,aud:'authenticated',role:'authenticated',email:uid+'@example.invalid',app_metadata:{},user_metadata:{},created_at:'2026-01-01T00:00:00Z'});}
   if(url.pathname==='/auth/v1/logout')return reply({});
   if(url.pathname==='/auth/v1/token')return reply({error:'Fixture login uses seeded independent sessions'},400);
+  if(url.pathname==='/fixture/directory'&&req.method==='POST'){const change=JSON.parse(raw);if(typeof change.name==='string')directoryName=change.name;directoryFail=!!change.fail;directoryNow+=60001;return reply({ok:true});}
+  if(url.pathname==='/functions/v1/media-groups'&&url.searchParams.get('view')==='directory'){const response=await directoryHandler(new Request(url));res.writeHead(response.status,{...cors,...Object.fromEntries(response.headers)});return res.end(await response.text());}
   if(url.pathname.startsWith('/functions/v1/communications')){
    const response=await handler(new Request(url,{method:req.method,headers:req.headers,body:raw.length?raw:undefined,duplex:'half'}));res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
   }

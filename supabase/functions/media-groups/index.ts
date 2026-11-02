@@ -1,5 +1,6 @@
 // @ts-nocheck — логика перенесена без изменений из исходного JS
 // Перенесено из media-podmoskovya (Vercel) в Supabase Edge Functions.
+import { createDistrictDirectoryHandler } from './directory.ts';
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
 const json = (body: unknown, status = 200, maxAge = 60) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${maxAge}` } });
 // Партийные группы округов: когда был последний пост в ВК и Telegram.
@@ -150,7 +151,9 @@ async function build(): Promise<unknown> {
 }
 
 let cache: { at: number; data: unknown } | null = null;
+const directory = createDistrictDirectoryHandler();
 Deno.serve(async (req) => {
+  if (new URL(req.url).searchParams.get('view') === 'directory') return directory(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
     if (!cache || Date.now() - cache.at > 900 * 1000) cache = { at: Date.now(), data: await build() };
