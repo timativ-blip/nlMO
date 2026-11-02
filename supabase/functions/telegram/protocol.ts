@@ -49,7 +49,7 @@ export function appUrl(base: string, path = '') {
   const route = path.replace(/^#/, '');
   if (
     route &&
-    /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse)(\/[A-Za-z0-9_-]+)*$/.test(route)
+    /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse|messages|meetings)(\/[A-Za-z0-9_-]+)*$/.test(route)
   )
     url.searchParams.set('view', route);
   return url.toString();

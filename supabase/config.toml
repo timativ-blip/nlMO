@@ -1,3 +1,7 @@
 [functions.telegram]
 # The function verifies Telegram webhooks and signed Mini App launch data itself.
 verify_jwt = false
+
+[functions.communications]
+# The handler verifies user JWTs and signed LiveKit webhooks separately.
+verify_jwt = false

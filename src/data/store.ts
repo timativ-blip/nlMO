@@ -23,7 +23,7 @@ const deny = (msg = 'Недостаточно прав для этого дей�
   throw new AppError(msg);
 };
 
-const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true } };
+const DEFAULT_UI: UiPrefs = { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true, message: true, meeting: true } };
 function emptyState(): State {
   return {
     version: DATA_VERSION, seededAt: stamp(), users: [], districts: [], tasks: [], taskTemplates: [], taskSchedules: [], mediaMatches: [], events: [], reports: [], dailyReports: [], briefs: [], metrics: [], notifications: [], audit: [],

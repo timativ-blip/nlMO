@@ -307,7 +307,7 @@ export function createSeed(): State {
       priority: { low: 0.5, normal: 1, high: 1.5, urgent: 2 },
       lateFactor: 0.7, minTasks: 3,
     },
-    ui: { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true } },
+    ui: { period: 'month', districtId: 'all', taskView: 'list', notify: { assign: true, comment: true, review: true, event: true, report: true, deadline: true, media: true, message: true, meeting: true } },
     session: { userId: head.id },
   };
 }

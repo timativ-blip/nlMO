@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "Bundler",
+    "strict": true, "noEmit": true, "skipLibCheck": true, "allowImportingTsExtensions": true, "baseUrl": ".",
+    "paths": {
+      "npm:@supabase/supabase-js@2.45.4": ["../node_modules/@supabase/supabase-js/dist/module/index.d.ts"],
+      "npm:livekit-server-sdk@2.19.2": ["../node_modules/livekit-server-sdk/dist/index.d.ts"]
+    }
+  },
+  "include": ["telegram-types.d.ts", "../supabase/functions/communications/**/*.ts"]
+}

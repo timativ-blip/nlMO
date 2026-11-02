@@ -59,7 +59,7 @@ export function initializeTelegram() {
     const view = new URLSearchParams(location.search).get('view') ?? '/home';
     if (/(?:^#|&)tgWebAppData=/.test(location.hash)) {
       const target =
-        /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse)(\/[A-Za-z0-9_-]+)*$/.test(view)
+        /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse|messages|meetings)(\/[A-Za-z0-9_-]+)*$/.test(view)
           ? view
           : '/home';
       history.replaceState(null, '', location.pathname + location.search + '#' + target);
@@ -109,7 +109,7 @@ export function enterPasswordLogin() {
   localStorage.removeItem(`${AUTH_STORAGE_KEY}-code-verifier`);
   const url = new URL(location.href);
   const route = location.hash.replace(/^#/, '') || url.searchParams.get('view') || '/home';
-  url.hash = /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse)(\/[A-Za-z0-9_-]+)*$/.test(route)
+  url.hash = /^\/(home|tasks|calendar|team|reports|analytics|media|daily|profile|settings|pulse|messages|meetings)(\/[A-Za-z0-9_-]+)*$/.test(route)
     ? route
     : '/home';
   url.search = '';
