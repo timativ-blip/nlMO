@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSeason, buildTimeline, loadMediaTimeline, mediaMonth, mediaMonths, mediaSeasonTitle, parseCsv, SEASON_11_URL } from '../.test-media/media-season.js';
+import { buildSeason, buildTimeline, loadMediaTimeline, mediaMonth, mediaMonths, mediaSeasonTitle, parseCsv, SEASON_11_URL } from '../.test-media/media-entry.js';
 
 const headers = ['Дата поста','Заголовок','Канал/группа','Источник','ID аккаунта','ФИО','Критерии','Невыполненные критерии','Очки','Вклад в регион','Просмотры','Лайки','Комментарии','Репосты','В избранное','URL'];
 const csv = (...records) => [headers,...records.map((record)=>headers.map((name)=>record[name] ?? ''))]
@@ -82,20 +82,21 @@ test('an empty October is still selectable and the archive retains older months'
   assert.equal(mediaSeasonTitle(data,'2026-08'),'Август 2026');
 });
 
-test('the live loader reads both sources, omits Google credentials and propagates cancellation',async()=>{
-  const original=globalThis.fetch, calls=[];
-  const signal=new AbortController().signal;
+test('the live loader uses the same merged server source as the bot and propagates cancellation',async()=>{
+  const original=globalThis.fetch,calls=[],signal=new AbortController().signal;
+  const timeline=buildTimeline(archive(),buildSeason(csv(row()),archive()));
   try {
-    globalThis.fetch=async(url,options)=>{
-      calls.push({url,options});
-      return url===SEASON_11_URL ? new Response(csv(row())) : Response.json(archive());
-    };
+    globalThis.fetch=async(url,options)=>{calls.push({url,options});return Response.json(timeline);};
     const data=await loadMediaTimeline('https://example.com/media-pd',signal);
-    assert.equal(data.posts.length,2);
-    assert.equal(data.posts.filter((p)=>p[0].startsWith('2026-10')).length,1);
-    assert.equal(calls.find((c)=>c.url===SEASON_11_URL).options.credentials,'omit');
-    assert.ok(calls.every((c)=>c.options.signal===signal && c.options.cache==='no-store'));
-    globalThis.fetch=async()=>new Response('Unavailable',{status:502});
-    await assert.rejects(loadMediaTimeline('https://example.com/media-pd',signal),/Не удалось обновить/);
-  } finally {globalThis.fetch=original;}
+    assert.equal(data.posts.length,2);assert.equal(calls.length,1);assert.equal(calls[0].url,'https://example.com/media-pd');
+    assert.equal(calls[0].options.signal,signal);assert.equal(calls[0].options.cache,'no-store');
+    globalThis.fetch=async()=>Response.json(archive());await assert.rejects(loadMediaTimeline('https://example.com/media-pd',signal),/Некорректная/);
+    globalThis.fetch=async()=>new Response('Unavailable',{status:502});await assert.rejects(loadMediaTimeline('https://example.com/media-pd',signal),/Не удалось обновить/);
+  }finally{globalThis.fetch=original;}
+});
+
+test('new November rows on the 11-season sheet are retained without rewriting September',()=>{
+  const old=archive(),data=buildTimeline(old,buildSeason(csv(row({'Дата поста':'2026-11-01'})),old));
+  assert.deepEqual(data.posts[0],old.posts[0]);assert.equal(data.posts.at(-1)[0],'2026-11-01');
+  assert.equal(mediaSeasonTitle(data,'2026-11'),'11 сезон · Ноябрь 2026');
 });

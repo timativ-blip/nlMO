@@ -63,7 +63,7 @@ export default function PersonActivity({ u }: { u: User }) {
             <Row label="Задачи подтверждены" w={W.done} pw={PW.done} m={M.done} pmv={PM.done} />
             <Row label="Результаты сданы на проверку" w={W.submitted} pw={PW.submitted} m={M.submitted} pmv={PM.submitted} />
             {pdIndex >= 0
-              ? <Row label="Посты «Пиши-Делись»" hint={pdAsOf && pdAsOf < addDays(today, -2) ? `таблица обновлена по ${fmtDayMonth(pdAsOf)}` : `баллы: неделя ${Math.round(W.pts)}, месяц ${Math.round(M.pts)}`} w={W.posts} pw={PW.posts} m={M.posts} pmv={PM.posts} />
+              ? <Row label="Посты «Пиши-Делись»" hint={pdAsOf && pdAsOf < addDays(today, -2) ? `публикации в выгрузке по ${fmtDayMonth(pdAsOf)}` : `баллы: неделя ${Math.round(W.pts)}, месяц ${Math.round(M.pts)}`} w={W.posts} pw={PW.posts} m={M.posts} pmv={PM.posts} />
               : <tr><td><b>Посты «Пиши-Делись»</b></td><td colSpan={2} className="right small muted">{pd.data ? 'нет в списках «Пиши-Делись» (сверяем по фамилии и имени)' : 'загружаю…'}</td></tr>}
             {daily && <Row label="Отчёты дня" hint="сдано из рабочих дней" w={`${W.reports} из ${W.wd}`} pw={PW.reports} m={`${M.reports} из ${M.wd}`} pmv={PM.reports} />}
             <tr><td><b>Просрочено сейчас</b></td><td colSpan={2} className="right"><b className="num" style={{ color: overdue ? 'var(--c-danger)' : undefined }}>{overdue}</b></td></tr>

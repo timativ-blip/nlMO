@@ -145,7 +145,7 @@ export default function PulsePage() {
 
 
 /* ───────── Тепловые карты ───────── */
-/** Последняя дата в данных «Пиши-Делись»: таблицу обновляют не каждый день, окна считаем от неё */
+/** Последняя дата публикации в «Пиши-Делись»: окна активности считаем от неё */
 const pdAsOf = (pd: PdData | null) => (pd && pd.posts.length ? pd.posts.reduce((m, p) => (p[0] > m ? p[0] : m), '') : todayISO());
 function weeksBack(n: number, anchor = todayISO()) { const cur = weekStart(anchor); return Array.from({ length: n }, (_, k) => addDays(cur, -7 * (n - 1 - k))); }
 
