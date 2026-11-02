@@ -8,6 +8,12 @@ export interface Invitation { id: string; meetingId: string; inviterId: string; 
 export interface MeetingParticipant { userId: string; identity: string; state: 'admitted' | 'joined' | 'left' | 'removed'; joinedAt?: string | null }
 export interface MeetingDetail { meeting: Meeting; invitations: Invitation[]; participants: MeetingParticipant[] }
 export interface MeetingMessage { id: string; seq: string; senderId: string; text: string; createdAt: string }
+export interface MeetingDocumentContent { agenda: string; summary: string; decisions: string; actions: string }
+export interface MeetingDocuments {
+  meetingId: string; title: string; ownerId: string; responsibleId: string; canEdit: boolean; agenda: string; eligibleRecipients: number | null;
+  draft: { content: MeetingDocumentContent; version: number; updatedAt: string | null } | null;
+  published: { id: string; revision: number; draftVersion: number; content: MeetingDocumentContent; publishedAt: string; publishedBy: string; recipients: number } | null;
+}
 export interface MediaAdmission { token: string; url: string; identity: string; room: string; expiresIn: number }
 export interface ActiveCall { meeting: Meeting; admission: MediaAdmission; tracks: LocalTrack[] }
 export interface CommunicationIndex { serverTime: string; contacts: Contact[]; conversations: Conversation[]; unread: number; meetings: Meeting[]; invitations: Invitation[] }
@@ -15,5 +21,5 @@ export interface CommunicationState extends CommunicationIndex {
   userId: string; loading: boolean; ready: boolean; error: string; connected: boolean; clockOffset: number;
   videoReady: boolean; videoStatusLoaded: boolean; panelOpen: boolean; selected: string | null;
   messages: Record<string, DirectMessage[]>; hasOlder: Record<string, boolean>; threadLoading: boolean;
-  details: Record<string, MeetingDetail>; prepId: string | null; call: ActiveCall | null; callExpanded: boolean; callNotice: string;
+  details: Record<string, MeetingDetail>; prepId: string | null; minutesId: string | null; call: ActiveCall | null; callExpanded: boolean; callNotice: string;
 }

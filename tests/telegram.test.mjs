@@ -73,7 +73,7 @@ test('mini app links stay on the website, preserve a safe route and carry no cre
   assert.equal(result.searchParams.has('secret'), false);
   assert.equal(new URL(appUrl('https://example.org/', '//evil.org')).searchParams.has('view'), false);
   assert.throws(() => appUrl('http://example.org/'), /HTTPS/);
-  for (const view of ['/messages/123abc', '/meetings/123abc']) assert.equal(new URL(appUrl('https://example.org/', '#' + view)).searchParams.get('view'), view);
+  for (const view of ['/messages/123abc', '/meetings/123abc', '/meetings/123abc/minutes']) assert.equal(new URL(appUrl('https://example.org/', '#' + view)).searchParams.get('view'), view);
 });
 test('daily dialog uses Moscow dates, preserves drafts, previews and requires explicit confirmation', () => {
   const ctx = context();
