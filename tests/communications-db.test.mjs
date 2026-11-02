@@ -22,6 +22,7 @@ before(async()=>{
  await db.exec('grant usage on schema public to authenticated,anon,service_role;grant select on public.profiles to authenticated;');
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102075931_communications_and_meetings.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102100858_meeting_scheduling_notifications.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20261102110233_meeting_minutes.sql',import.meta.url),'utf8'));
  for(const [name,id] of Object.entries(ids)){await db.query('insert into auth.users values($1)',[id]);await db.query('insert into profiles(id,data) values($1,$2::jsonb)',[id,JSON.stringify({id,name,role:name==='head'?'head':'member',active:true,pending:false})]);}
 });
 beforeEach(async()=>{await db.query("select set_config('request.jwt.claim.sub','',false)");await db.exec('truncate comm_private.requests,comm_private.grants,comm_private.controls,comm_private.webhooks,comm_conversations,comm_meetings,notifications cascade');await db.query("update profiles set data=data||'{\"active\":true,\"pending\":false}'::jsonb");});
@@ -180,4 +181,98 @@ test('existing public rooms can announce to all once by organizer action, while 
  const announced=await call(ids.alice,'announce',body);assert.equal(announced.notifyAll,true);await call(ids.alice,'announce',body);await call(ids.alice,'announce',{...body,requestId:randomUUID()});
  assert.equal(await scalar('select count(*)::int from notifications'),4);assert.ok((await call(ids.bob,'index')).meetings.some(item=>item.id===r.id));
  const secret=await create(ids.alice,{inviteOnly:true});await assert.rejects(call(ids.alice,'announce',{meetingId:secret.id,requestId:randomUUID()}),/недоступно/);assert.ok(!(await call(ids.bob,'index')).meetings.some(item=>item.id===secret.id));
+});
+
+const saveDoc = (user, mid, version, extra = {}, requestId = randomUUID()) => call(user, 'minutes_save', { meetingId: mid, expectedVersion: version, agenda: '', summary: 'Итоги обсуждения', decisions: '', actions: '', ...extra, requestId });
+const documents = (user, mid) => call(user, 'minutes', { meetingId: mid });
+const publishDoc = (user, mid, version, requestId = randomUUID()) => call(user, 'minutes_publish', { meetingId: mid, expectedVersion: version, requestId });
+const assignDoc = (mid, responsibleId, who = ids.alice, requestId = randomUUID()) => call(who, 'minutes_assign', { meetingId: mid, responsibleId, requestId });
+const protocolNoticeCount = () => scalar("select count(*)::int from notifications where data->>'text' like 'Протокол встречи%'");
+
+test('organizer delegates agenda and minutes to an active secretary before a private meeting; organizer retains editing', async () => {
+ const r = await create(ids.alice, { inviteOnly: true });
+ await assert.rejects(documents(ids.third, r.id), /Нет доступа/);
+ const assignment = await assignDoc(r.id, ids.bob); assert.equal(assignment.responsibleId, ids.bob);
+ assert.ok((await call(ids.bob, 'index')).meetings.some(m => m.id === r.id));
+ const draft = await saveDoc(ids.bob, r.id, 0, { agenda: 'Обсудить план недели', decisions: 'Утвердить даты' });
+ assert.equal(draft.canEdit, true); assert.equal(draft.draft.version, 1);
+ assert.equal((await documents(ids.alice, r.id)).draft.content.agenda, 'Обсудить план недели');
+ await assert.rejects(assignDoc(r.id, ids.third, ids.bob), /назначает организатор/);
+ await assert.rejects(saveDoc(ids.head, r.id, 1), /организатору и ответственному/);
+ assert.equal(await scalar("select count(*)::int from notifications where user_id=$1 and data->>'text' like 'Вы назначены ответственным%'", [ids.bob]), 1);
+});
+
+test('saved agenda is visible to meeting viewers while protocol draft remains private; conflicting edits cannot overwrite', async () => {
+ const r = await create(ids.alice, { notifyAll: true });
+ const first = await saveDoc(ids.alice, r.id, 0, { agenda: 'Открытая повестка', summary: 'Закрытый черновик' });
+ const other = await documents(ids.head, r.id); assert.equal(other.agenda, 'Открытая повестка'); assert.equal(other.draft, null); assert.equal(other.published, null); assert.equal(other.canEdit, false);
+ await assert.rejects(saveDoc(ids.alice, r.id, 0, { summary: 'Потерянные правки' }), /Черновик изменён/);
+ assert.equal((await documents(ids.alice, r.id)).draft.content.summary, 'Закрытый черновик');
+ const same = await saveDoc(ids.alice, r.id, first.draft.version, { agenda: 'Открытая повестка', summary: 'Закрытый черновик' }); assert.equal(same.draft.version, 1);
+ await assert.rejects(saveDoc(ids.alice, r.id, 1, { agenda: 'x'.repeat(8001) }), /8000/);
+ await assert.rejects(saveDoc(ids.alice, r.id, 1, { decisions: { injected: true } }), /8000/);
+ await assert.rejects(as(ids.alice, () => scalar('select count(*) from comm_private.meeting_documents')), /permission denied/);
+});
+
+test('minutes survive ending the call and go to actual participants including those who left, not only invitees', async () => {
+ const r = await create(); await joined(ids.alice, r.id); await joined(ids.bob, r.id); const third = await joined(ids.third, r.id); await admit(ids.head, r.id);
+ await call(ids.third, 'leave', { meetingId: r.id, identity: third.identity });
+ await call(ids.alice, 'control', { meetingId: r.id, action: 'end', requestId: randomUUID() });
+ await saveDoc(ids.alice, r.id, 0, { decisions: 'Продолжить проект', actions: 'Борис · подготовить отчёт · пятница' });
+ const sent = await publishDoc(ids.alice, r.id, 1); assert.equal(sent.published.recipients, 3); assert.equal(await protocolNoticeCount(), 3);
+ for (const who of [ids.bob, ids.third]) { const received = await documents(who, r.id); assert.equal(received.draft, null); assert.equal(received.published.content.decisions, 'Продолжить проект'); }
+ assert.equal((await documents(ids.head, r.id)).published, null);
+ assert.equal(await as(ids.head, () => scalar('select count(*)::int from public.comm_meeting_minutes')), 0);
+ assert.equal(await scalar('select count(*)::int from comm_room_messages'), 0);
+ const link = await scalar("select data->>'link' from notifications where user_id=$1 and data->>'text' like 'Протокол встречи%'", [ids.third]); assert.equal(link, '#/meetings/' + r.id + '/minutes');
+});
+
+test('publication retries are idempotent and new edits create immutable revisions without exposing the new draft', async () => {
+ const r = await create(); await joined(ids.bob, r.id); const saveId = randomUUID(), pubId = randomUUID();
+ const saved = await saveDoc(ids.alice, r.id, 0, { decisions: 'Решение 1' }, saveId); assert.deepEqual(await saveDoc(ids.alice, r.id, 0, { decisions: 'Решение 1' }, saveId), saved);
+ const published = await publishDoc(ids.alice, r.id, 1, pubId); assert.deepEqual(await publishDoc(ids.alice, r.id, 1, pubId), published);
+ await publishDoc(ids.alice, r.id, 1); assert.equal(await protocolNoticeCount(), 2); assert.equal(await scalar('select count(*)::int from comm_meeting_minutes'), 1);
+ await saveDoc(ids.alice, r.id, 1, { decisions: 'Решение 2' }); assert.equal((await documents(ids.bob, r.id)).published.content.decisions, 'Решение 1');
+ await assert.rejects(publishDoc(ids.alice, r.id, 1), /Черновик изменён/);
+ const next = await publishDoc(ids.alice, r.id, 2); assert.equal(next.published.revision, 2); assert.equal(await protocolNoticeCount(), 4);
+ assert.equal(await scalar("select content->>'decisions' from comm_meeting_minutes where meeting_id=$1 and revision=1", [r.id]), 'Решение 1');
+ await assert.rejects(as(ids.bob, () => db.exec("update comm_meeting_minutes set content='{}'")), /permission denied/);
+});
+
+test('a late actual join receives the current minutes once; admission, duplicate media events and rejoining do not duplicate', async () => {
+ const r = await create(); await saveDoc(ids.alice, r.id, 0); await publishDoc(ids.alice, r.id, 1);
+ const grant = await admit(ids.bob, r.id); assert.equal(await protocolNoticeCount(), 1); assert.equal((await documents(ids.bob, r.id)).published, null);
+ const event = { meetingId: r.id, identity: grant.identity, event: 'joined', eventId: randomUUID(), at: new Date().toISOString(), sid: 'late-real-sid' };
+ await media('event', event); await media('event', event); await media('event', { ...event, eventId: randomUUID() });
+ assert.equal((await documents(ids.bob, r.id)).published.revision, 1); assert.equal(await protocolNoticeCount(), 2);
+ await call(ids.bob, 'leave', { meetingId: r.id, identity: grant.identity }); await joined(ids.bob, r.id); assert.equal(await protocolNoticeCount(), 2);
+});
+
+test('reassignment revokes draft access from previous secretary and removal revokes both editing and published access', async () => {
+ const r = await create(); await assignDoc(r.id, ids.bob); await saveDoc(ids.bob, r.id, 0); await joined(ids.bob, r.id); await publishDoc(ids.bob, r.id, 1);
+ await assignDoc(r.id, ids.third); assert.equal((await documents(ids.bob, r.id)).draft, null); assert.equal((await documents(ids.third, r.id)).canEdit, true);
+ await assert.rejects(saveDoc(ids.bob, r.id, 1), /организатору и ответственному/);
+ await call(ids.alice, 'control', { meetingId: r.id, action: 'remove', userId: ids.bob, requestId: randomUUID() });
+ await assert.rejects(documents(ids.bob, r.id), /Нет доступа/);
+ assert.equal(await as(ids.bob, () => scalar('select count(*)::int from comm_meeting_minutes')), 0);
+ await db.query("update profiles set data=data||'{\"active\":false}'::jsonb where id=$1", [ids.third]);
+ await assert.rejects(documents(ids.third, r.id), /активную/); await assert.rejects(assignDoc(r.id, ids.third), /активного/);
+});
+
+test('protocol delivery excludes removed, pending and inactive accounts and never sends to an unrelated team member', async () => {
+ const r = await create(ids.alice, { notifyAll: true }); await joined(ids.bob, r.id); await joined(ids.third, r.id); await joined(ids.head, r.id);
+ await call(ids.alice, 'control', { meetingId: r.id, action: 'remove', userId: ids.bob, requestId: randomUUID() });
+ await db.query("update profiles set data=data||'{\"pending\":true}'::jsonb where id=$1", [ids.third]); await db.query("update profiles set data=data||'{\"active\":false}'::jsonb where id=$1", [ids.head]);
+ await saveDoc(ids.alice, r.id, 0); const sent = await publishDoc(ids.alice, r.id, 1); assert.equal(sent.published.recipients, 1); assert.equal(await protocolNoticeCount(), 1);
+ await assert.rejects(as(ids.alice, () => scalar("select comm_private.documents_json($1)", [r.id])), /permission denied/);
+ await assert.rejects(as(ids.alice, () => scalar("select comm_private.dispatch_v2('index','{}')")), /permission denied/);
+ await assert.rejects(as(ids.alice, () => scalar("select comm_private.media_dispatch_v2('pending','{}')")), /permission denied/);
+});
+
+test('empty protocol is rejected and long Unicode protocol is complete on site with an explicit bounded Telegram excerpt', async () => {
+ const r = await create(); await saveDoc(ids.alice, r.id, 0, { summary: '', agenda: 'Только повестка' }); await assert.rejects(publishDoc(ids.alice, r.id, 1), /Заполните итоги/);
+ const text = '🌍'.repeat(3000); await saveDoc(ids.alice, r.id, 1, { summary: text }); const sent = await publishDoc(ids.alice, r.id, 2);
+ assert.equal(sent.published.content.summary, text);
+ const notice = await scalar("select data->>'text' from notifications where data->>'text' like 'Протокол встречи%' limit 1"); assert.ok(notice.length < 4000); assert.match(notice, /Полный протокол/);
+ assert.equal(await as(null, () => scalar("select has_function_privilege('anon','public.communications(text,jsonb)','EXECUTE')"), 'anon'), false);
 });

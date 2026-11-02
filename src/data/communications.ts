@@ -3,9 +3,9 @@ import { sb, FUNCTIONS_URL } from '../lib/supabase';
 import { withDeadline } from '../lib/deadline';
 import { go } from '../lib/router';
 import { humanError } from './backend';
-import type { ActiveCall, CommunicationIndex, CommunicationState, DirectMessage, Invitation, MediaAdmission, Meeting, MeetingDetail, MeetingMessage } from './communication-types';
+import type { ActiveCall, CommunicationIndex, CommunicationState, DirectMessage, Invitation, MediaAdmission, Meeting, MeetingDetail, MeetingMessage, MeetingDocuments, MeetingDocumentContent } from './communication-types';
 
-const empty = (): CommunicationState => ({ userId: '', loading: false, ready: false, error: '', connected: false, clockOffset: 0, videoReady: false, videoStatusLoaded: false, serverTime: '', contacts: [], conversations: [], unread: 0, meetings: [], invitations: [], panelOpen: false, selected: null, messages: {}, hasOlder: {}, threadLoading: false, details: {}, prepId: null, call: null, callExpanded: true, callNotice: '' });
+const empty = (): CommunicationState => ({ userId: '', loading: false, ready: false, error: '', connected: false, clockOffset: 0, videoReady: false, videoStatusLoaded: false, serverTime: '', contacts: [], conversations: [], unread: 0, meetings: [], invitations: [], panelOpen: false, selected: null, messages: {}, hasOlder: {}, threadLoading: false, details: {}, prepId: null, minutesId: null, call: null, callExpanded: true, callNotice: '' });
 let state = empty(), generation = 0;
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<CommunicationState>) => { state = { ...state, ...patch }; listeners.forEach(fn => fn()); };
@@ -107,7 +107,7 @@ export function initializeCommunications(userId: string) {
     debounce = setTimeout(() => { void loadCommunications(); if (state.selected && state.panelOpen) void loadMessages(state.selected).catch(() => {}); if (state.call) void loadMeeting(state.call.meeting.id).catch(() => {}); }, 160);
   };
   channel = sb.channel('kc-communications-' + userId);
-  for (const table of ['comm_messages', 'comm_members', 'comm_invitations', 'comm_meetings', 'comm_participants', 'comm_room_messages']) {
+  for (const table of ['comm_messages', 'comm_members', 'comm_invitations', 'comm_meetings', 'comm_participants', 'comm_room_messages', 'comm_meeting_minutes']) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, event => {
       if (current !== generation) return;
       if (table === 'comm_messages') {
@@ -214,6 +214,12 @@ export async function openPreparation(id: string) {
   emit({ prepId: id, panelOpen: false, callNotice: '' });
 }
 export function closePreparation() { emit({ prepId: null }); }
+export function openMeetingMinutes(meetingId: string) { emit({ minutesId: meetingId, panelOpen: false }); }
+export function closeMeetingMinutes() { emit({ minutesId: null }); if (location.hash.endsWith('/minutes')) go('/meetings/' + location.hash.split('/')[2]); }
+export const loadMeetingDocuments = (meetingId: string) => communicationsRpc<MeetingDocuments>('minutes', { meetingId });
+export const saveMeetingDocuments = (meetingId: string, content: MeetingDocumentContent, expectedVersion: number, requestId: string) => communicationsRpc<MeetingDocuments>('minutes_save', { meetingId, ...content, expectedVersion, requestId });
+export const assignMeetingSecretary = (meetingId: string, responsibleId: string, requestId: string) => communicationsRpc<MeetingDocuments>('minutes_assign', { meetingId, responsibleId, requestId });
+export const publishMeetingMinutes = (meetingId: string, expectedVersion: number, requestId: string) => communicationsRpc<MeetingDocuments>('minutes_publish', { meetingId, expectedVersion, requestId });
 export function activateCall(call: ActiveCall) { emit({ call, prepId: null, panelOpen: false, callExpanded: true, callNotice: '' }); }
 export function finishCall(notice = 'Вы вышли из встречи.') { emit({ call: null, callNotice: notice }); }
 export function expandCall(expanded: boolean) { emit({ callExpanded: expanded }); }

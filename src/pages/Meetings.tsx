@@ -1,10 +1,10 @@
-import { ArrowRight, CalendarClock, Copy, Lock, Megaphone, Plus, RefreshCw, Square, UserPlus, Video } from 'lucide-react';
+import { ArrowRight, CalendarClock, Copy, FileText, Lock, Megaphone, Plus, RefreshCw, Square, UserPlus, Video } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Meeting } from '../data/communication-types';
 import type { Route } from '../lib/router';
 import { go } from '../lib/router';
 import { meetingInput, meetingInstant, meetingLabel, meetingPhase, meetingWhen } from '../lib/meeting-time';
-import { announceMeeting, createMeeting, loadCommunications, loadMeeting, moderateMeeting, openPreparation, rescheduleMeeting, useCommunications } from '../data/communications';
+import { announceMeeting, createMeeting, loadCommunications, loadMeeting, moderateMeeting, openMeetingMinutes, openPreparation, rescheduleMeeting, useCommunications } from '../data/communications';
 import { DEMO_MODE } from '../data/store';
 import { Button, Modal, toast } from '../ui/kit';
 import { copyMeetingLink, InvitationActions, InvitePeopleDialog, PersonName } from '../ui/MeetingInvites';
@@ -66,6 +66,7 @@ export default function MeetingsPage({ route }: { route: Route }) {
       <div className="comm-inline-actions">
         <Button variant="primary" icon={Video} disabled={!state.videoReady || phase !== 'live'} onClick={() => void prepare(id)}>{state.call?.meeting.id === id ? 'Вернуться во встречу' : 'Подготовиться к подключению'}</Button>
         <Button icon={Copy} onClick={() => void copyMeetingLink(id)}>Скопировать ссылку</Button>
+        <Button icon={FileText} onClick={() => openMeetingMinutes(id)}>Повестка и протокол</Button>
         {detail.meeting.active && (detail.meeting.ownerId === state.userId || detail.participants.some(person => person.userId === state.userId && person.state === 'joined')) && <Button icon={UserPlus} disabled={detail.meeting.locked} onClick={() => setInviting(id)}>Пригласить пользователей</Button>}
         {detail.meeting.active && detail.meeting.ownerId === state.userId && <>
           {!detail.meeting.inviteOnly && !detail.meeting.notifyAll && <Button icon={Megaphone} disabled={busy} onClick={() => void announce()}>Уведомить команду</Button>}

@@ -33,8 +33,9 @@ await db.exec(daily.slice(daily.indexOf('create table daily_reports'),daily.inde
 await db.exec('create table public.media_briefs(id text primary key,data jsonb,created_at timestamptz default now());create table public.task_templates(id text primary key,data jsonb);create table public.task_schedules(id text primary key,data jsonb);create table public.media_matches(id text primary key,data jsonb);grant usage on schema public to authenticated,anon,service_role;grant select,insert,update on all tables in schema public to authenticated;grant all on all tables in schema public to service_role;grant usage,select on all sequences in schema public to service_role,authenticated;');
 await db.exec(readFileSync(new URL('../supabase/migrations/20261102075931_communications_and_meetings.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102100858_meeting_scheduling_notifications.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/20261102110233_meeting_minutes.sql',import.meta.url),'utf8'));
 for(const profile of profiles){await db.query('insert into auth.users values($1)',[profile.id]);await db.query('insert into public.profiles(id,data) values($1,$2::jsonb)',[profile.id,JSON.stringify({...profile,email:profile.id+'@example.invalid',phone:'',birthdayVisibility:'hidden'})]);}
-const tables=['comm_conversations','comm_members','comm_messages','comm_meetings','comm_participants','comm_invitations','comm_room_messages','notifications'];
+const tables=['comm_conversations','comm_members','comm_messages','comm_meetings','comm_participants','comm_invitations','comm_room_messages','comm_meeting_minutes','notifications'];
 const sockets=new Set();
 async function snapshot(){const result={};for(const table of tables){const rows=(await db.query('select * from public.'+table)).rows;result[table]=new Map(rows.map(row=>[row.id??(row.conversation_id??row.meeting_id)+':'+row.user_id,row]));}return result;}
 async function runAs(role,uid,sql,args=[]){await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid??'']);await db.exec('set role '+role);try{return await db.query(sql,args);}finally{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub','',false)");}}
@@ -79,6 +80,7 @@ const server=createServer(async(req,res)=>{
    const result=await serialized(async()=>{
     if(req.method==='GET'){let rows=(await runAs(role,uid,'select * from public.'+table)).rows;for(const [key,value] of url.searchParams){if(value.startsWith('eq.'))rows=rows.filter(row=>String(row[key])===value.slice(3));}if(url.searchParams.has('limit'))rows=rows.slice(0,Number(url.searchParams.get('limit')));return rows;}
     const body=JSON.parse(raw);if(req.method==='POST'&&table==='reports'){const data=(await runAs(role,uid,'insert into public.reports(id,data) values($1,$2::jsonb) returning *',[body.id,JSON.stringify(body.data)])).rows;return data;}
+    if(req.method==='PATCH'&&table==='notifications'&&url.searchParams.get('id')?.startsWith('eq.'))return (await runAs(role,uid,'update public.notifications set data=$2::jsonb where id=$1 returning *',[url.searchParams.get('id').slice(3),JSON.stringify(body.data)])).rows;
     throw new Error('Unexpected fixture mutation');
    });return reply(result);
   }

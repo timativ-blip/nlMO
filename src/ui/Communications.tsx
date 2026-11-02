@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, CheckCheck, MessageCircle, Plus, RefreshCw, Search, Send, Video, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { cancelInvitation, createMeeting, initializeCommunications, loadCommunications, loadMeeting, loadMessages, openConversation, openPreparation, readVisibleMessages, resetCommunications, selectConversation, sendDirectMessage, setMessagePanel, signalDialog, startConversation, useCommunications, visibleDialog } from '../data/communications';
+import { cancelInvitation, createMeeting, initializeCommunications, loadCommunications, loadMeeting, loadMessages, openConversation, openPreparation, openMeetingMinutes, readVisibleMessages, resetCommunications, selectConversation, sendDirectMessage, setMessagePanel, signalDialog, startConversation, useCommunications, visibleDialog } from '../data/communications';
 import type { DirectMessage } from '../data/communication-types';
 import { DEMO_MODE, useAppState } from '../data/store';
 import { go, useRoute } from '../lib/router';
@@ -11,6 +11,7 @@ import '../communications.css';
 
 const Preparation = lazy(() => import('./MeetingRoom').then(module => ({ default: module.Preparation })));
 const ActiveMeeting = lazy(() => import('./MeetingRoom').then(module => ({ default: module.ActiveMeeting })));
+const MeetingMinutes = lazy(() => import('./MeetingMinutes'));
 const time = (value: string) => new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
 export function MessagesButton() {
   const state = useCommunications();
@@ -98,8 +99,10 @@ export function CommunicationsRoot() {
   const me = useMe(); const app = useAppState(); const state = useCommunications(); const route = useRoute(); const [dismissed, setDismissed] = useState<string[]>([]);
   useEffect(() => { if (!DEMO_MODE && me.active !== false && !me.pending) initializeCommunications(me.id); return resetCommunications; }, [me.id, me.active, me.pending]);
   useEffect(() => { if (route.parts[0] === 'messages') { if (route.parts[1] && state.userId) void openConversation(route.parts[1]).catch(error => toast(error.message, 'error')); else setMessagePanel(true); } }, [route.parts.join('/'), state.userId]);
+  useEffect(() => { if (route.parts[0] === 'meetings' && route.parts[2] === 'minutes' && state.userId) openMeetingMinutes(route.parts[1]); }, [route.parts.join('/'), state.userId]);
   const invitations = app.ui.notify.meeting === false ? [] : state.invitations.filter(invitation => invitation.userId === me.id && invitation.status === 'pending' && Date.parse(invitation.expiresAt) > Date.now() + state.clockOffset && !dismissed.includes(invitation.id + invitation.updatedAt) && state.call?.meeting.id !== invitation.meetingId).slice(0, 2);
   return <><MessagePanel />{invitations.length > 0 && <div className="comm-incoming" aria-live="polite">{invitations.map(invitation => <section className="comm-module comm-incoming-card" key={invitation.id}><header><Video size={20} /><b className="grow">Приглашение во встречу</b><Button iconOnly size="sm" icon={X} variant="ghost" aria-label="Скрыть приглашение" onClick={() => setDismissed(value => [...value, invitation.id + invitation.updatedAt])} /></header><p><PersonName id={invitation.inviterId} /> приглашает: <b>{state.meetings.find(meeting => meeting.id === invitation.meetingId)?.title ?? 'Видеовстреча'}</b></p><InvitationActions invitation={invitation} /></section>)}</div>}
     <Suspense fallback={<div className="comm-loading" role="status">Открываю видеовстречу…</div>}>{state.prepId && <Preparation key={state.prepId} meetingId={state.prepId} />}{state.call && <ActiveMeeting key={state.call.admission.identity} call={state.call} />}</Suspense>
+    <Suspense fallback={<div className="comm-loading" role="status">Открываю документы встречи…</div>}>{state.minutesId && state.userId === me.id && <MeetingMinutes key={state.userId + ':' + state.minutesId} meetingId={state.minutesId} />}</Suspense>
   </>;
 }
