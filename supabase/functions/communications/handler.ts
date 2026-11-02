@@ -130,13 +130,24 @@ export function createCommunicationsHandler(deps: Dependencies) {
         if (typeof result.controlId === 'string') { missing(); await enforce(userId, result.controlId); }
         return json(result);
       }
-      missing();
       if (action === 'create') {
-        const result = await rpc(user, 'communications', 'create', { requestId: body.requestId, title: body.title, inviteOnly: body.inviteOnly ?? false, ...(body.peerId ? { peerId: body.peerId } : {}) });
+        if (!body.scheduledAt) missing();
+        const result = await rpc(user, 'communications', 'create', { requestId: body.requestId, title: body.title, inviteOnly: body.inviteOnly ?? false, ...(body.scheduledAt ? { scheduledAt: body.scheduledAt } : {}), ...(typeof body.notifyAll === 'boolean' ? { notifyAll: body.notifyAll } : {}), ...(body.peerId ? { peerId: body.peerId } : {}) });
         return json(result);
       }
       if (!uuid(body.meetingId)) throw new HttpError(400, 'Ссылка встречи недействительна.');
       const meetingId = body.meetingId;
+      if (action === 'announce') return json(await rpc(user, 'communications', 'announce', { meetingId, requestId: body.requestId }));
+      if (action === 'schedule') return json(await rpc(user, 'communications', 'schedule', { meetingId, scheduledAt: body.scheduledAt, requestId: body.requestId }));
+      if (action === 'moderate') {
+        if (!ready && body.operation !== 'end') missing();
+        const op = await rpc<{ controlId: string }>(user, 'communications', 'control', { meetingId, requestId: body.requestId, action: body.operation, ...(body.userId ? { userId: body.userId } : {}) });
+        if (!ready) return json({ ok: true, mediaPending: true }, 202);
+        try { await enforce(userId, op.controlId); }
+        catch { return json({ ok: true, mediaPending: true }, 202); }
+        return json({ ok: true });
+      }
+      missing();
       if (action === 'token') {
         const admitted = await rpc<Admission>(user, 'communications', 'admit', { meetingId, requestId: body.requestId });
         const access = await internal<{ revoke: string[] }>('admission', { userId, meetingId, identity: admitted.identity });
@@ -145,10 +156,6 @@ export function createCommunicationsHandler(deps: Dependencies) {
         const jwt = await admissionToken(media!, admitted);
         await internal('admission', { userId, meetingId, identity: admitted.identity });
         return json({ token: jwt, url: media!.url, identity: admitted.identity, room: admitted.room, expiresIn: 90 });
-      }
-      if (action === 'moderate') {
-        const op = await rpc<{ controlId: string }>(user, 'communications', 'control', { meetingId, requestId: body.requestId, action: body.operation, ...(body.userId ? { userId: body.userId } : {}) });
-        await enforce(userId, op.controlId); return json({ ok: true });
       }
       if (action === 'verify') {
         if (!uuid(body.identity)) throw new HttpError(400, 'Подключение не найдено.');

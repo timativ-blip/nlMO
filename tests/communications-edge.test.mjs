@@ -67,3 +67,13 @@ test('webhooks require both valid signature and matching raw body; only managed 
   const other = body.replace('kc_', 'other_'), otherGrant = new AccessToken(media.apiKey, media.apiSecret, { ttl: 60 }); otherGrant.sha256 = createHash('sha256').update(other).digest('base64');
   assert.equal((await f.request(other, { Authorization: await otherGrant.toJwt() }, '/webhook')).status, 200); assert.equal(f.calls.length, 1);
 });
+test('planning and cancellation remain authenticated and server-owned when media is temporarily unconfigured', async () => {
+  const f = fixture({ rpcResult: { controlId: randomUUID() } });
+  const scheduledAt = new Date(Date.now() + 3600000).toISOString();
+  assert.equal((await f.request({ action: 'create', title: 'Планёрка', scheduledAt, notifyAll: true, requestId: randomUUID() })).status, 200);
+  assert.equal(f.calls[0].p_body.scheduledAt, scheduledAt); assert.equal(f.calls[0].p_body.notifyAll, true);
+  assert.equal((await f.request({ action: 'schedule', meetingId: randomUUID(), scheduledAt, requestId: randomUUID() })).status, 200);
+  const end = await f.request({ action: 'moderate', meetingId: randomUUID(), operation: 'end', requestId: randomUUID() });
+  assert.equal(end.status, 202); assert.equal((await end.json()).mediaPending, true); assert.equal(f.calls.at(-1).p_action, 'control');
+  assert.equal((await f.request({ action: 'moderate', meetingId: randomUUID(), operation: 'remove', userId: randomUUID(), requestId: randomUUID() })).status, 503);
+});

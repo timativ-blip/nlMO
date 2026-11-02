@@ -2,7 +2,7 @@ import type { LocalTrack } from 'livekit-client';
 export interface Contact { id: string; name: string; photo?: string; active: boolean; role: string; position?: string }
 export interface DirectMessage { id: string; seq?: string; conversationId: string; senderId: string; text: string; meetingId?: string | null; createdAt: string; deliveredAt?: string | null; readAt?: string | null; sendState?: 'sending' | 'error' }
 export interface Conversation { id: string; peerId: string; lastMessage: DirectMessage | null; unread: number; peerOpenUntil?: string; typingUntil?: string }
-export interface Meeting { id: string; ownerId: string; title: string; inviteOnly: boolean; locked: boolean; createdAt: string; expiresAt: string; endedAt: string | null; active: boolean }
+export interface Meeting { id: string; ownerId: string; title: string; inviteOnly: boolean; locked: boolean; createdAt: string; scheduledAt: string | null; startsAt: string; notifyAll: boolean; phase: 'scheduled' | 'live' | 'ended' | 'cancelled'; canJoin: boolean; expiresAt: string; endedAt: string | null; active: boolean }
 export type InvitationStatus = 'pending' | 'accepted' | 'joined' | 'declined' | 'cancelled' | 'expired';
 export interface Invitation { id: string; meetingId: string; inviterId: string; userId: string; status: InvitationStatus; createdAt: string; updatedAt: string; expiresAt: string }
 export interface MeetingParticipant { userId: string; identity: string; state: 'admitted' | 'joined' | 'left' | 'removed'; joinedAt?: string | null }

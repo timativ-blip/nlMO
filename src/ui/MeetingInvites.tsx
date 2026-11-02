@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { cancelInvitation, invitePeople, meetingLink, openPreparation, respondInvitation, useCommunications } from '../data/communications';
 import type { Invitation, InvitationStatus } from '../data/communication-types';
 import { useAppState } from '../data/store';
+import { go } from '../lib/router';
 import { Avatar, Button, Modal, toast } from './kit';
 
 export const INVITATION_LABEL: Record<InvitationStatus, string> = { pending: 'Отправлено', accepted: 'Приглашение принято', joined: 'Присоединился', declined: 'Отклонено', cancelled: 'Отменено', expired: 'Истекло' };
@@ -14,10 +15,12 @@ export async function copyMeetingLink(id: string) {
 }
 export function InvitationActions({ invitation }: { invitation: Invitation }) {
   const state = useCommunications(); const [busy, setBusy] = useState(false);
+  const meeting = state.meetings.find(item => item.id === invitation.meetingId);
+  const future = !!meeting?.scheduledAt && Date.parse(meeting.scheduledAt) > Date.now() + state.clockOffset;
   const run = async (action: () => Promise<unknown>) => { setBusy(true); try { await action(); } catch (error) { toast((error as Error).message, 'error'); } finally { setBusy(false); } };
   if (['expired', 'cancelled', 'declined', 'joined'].includes(invitation.status)) return <span className="comm-status">{INVITATION_LABEL[invitation.status]}</span>;
   if (invitation.userId === state.userId) return <div className="comm-inline-actions">
-    <Button size="sm" variant="primary" icon={Video} disabled={busy || !state.videoReady} onClick={() => void run(() => invitation.status === 'accepted' ? openPreparation(invitation.meetingId) : respondInvitation(invitation.id, 'accepted'))}>Присоединиться</Button>
+    <Button size="sm" variant="primary" icon={Video} disabled={busy || !future && !state.videoReady} onClick={() => void run(async () => { if (invitation.status !== 'accepted') return respondInvitation(invitation.id, 'accepted'); if (future) { go('/meetings/' + invitation.meetingId); return; } return openPreparation(invitation.meetingId); })}>{future ? invitation.status === 'accepted' ? 'Открыть встречу' : 'Принять приглашение' : 'Присоединиться'}</Button>
     <Button size="sm" variant="ghost" icon={X} disabled={busy} onClick={() => void run(() => respondInvitation(invitation.id, 'declined'))}>Отклонить</Button>
   </div>;
   return <div className="comm-inline-actions"><span className="comm-status">{INVITATION_LABEL[invitation.status]}</span><Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => cancelInvitation(invitation.id))}>Отменить</Button></div>;
