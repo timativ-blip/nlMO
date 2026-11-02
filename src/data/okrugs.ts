@@ -51,7 +51,7 @@ export const OKRUGS: OkrugRef[] = [
    "пос. Лотошино",
    "пос. Шаховская"
   ],
-  "coordinatorName": "Блюдин Алексей"
+  "coordinatorName": "Петухов Тимофей"
  },
  {
   "id": "122",

@@ -4,5 +4,5 @@
     "strict": true, "noEmit": true, "skipLibCheck": true, "allowImportingTsExtensions": true, "baseUrl": ".",
     "paths": { "npm:@supabase/supabase-js@2.45.4": ["../node_modules/@supabase/supabase-js/dist/module/index.d.ts"] }
   },
-  "include": ["telegram-types.d.ts", "../supabase/functions/media-pd/**/*.ts", "../supabase/functions/digest/**/*.ts", "../supabase/functions/_shared/media-timeline.ts"]
+  "include": ["telegram-types.d.ts", "../supabase/functions/media-pd/**/*.ts", "../supabase/functions/media-groups/**/*.ts", "../supabase/functions/digest/**/*.ts", "../supabase/functions/_shared/*.ts"]
 }

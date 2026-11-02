@@ -13,6 +13,8 @@ import { Avatar, Bar, Button, Empty, ReportBadge, Tabs } from '../ui/kit';
 import { ContextBar, MoMap, TaskRow } from '../ui/widgets';
 import PersonActivity from './PersonActivity';
 import { AddPersonButton, PersonAdminCard, Requests, usePendingRequests } from './TeamAdmin';
+import { DistrictCoordinator } from '../ui/DistrictCoordinator';
+import { useDistrictDirectory } from '../data/district-directory';
 
 export default function TeamPage({ route }: { route: Route }) {
   const [, sub, id] = route.parts;
@@ -82,6 +84,7 @@ function People() {
 
 function Districts() {
   const s = useAppState();
+  const directory = useDistrictDirectory();
   const L = useLookup();
   const period = usePeriod();
   const rows = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
@@ -101,7 +104,7 @@ function Districts() {
               return (
                 <tr key={d.districtId} className="clickable" tabIndex={0} onClick={() => go(`/team/districts/${d.districtId}`)} onKeyDown={(e) => e.key === 'Enter' && go(`/team/districts/${d.districtId}`)}>
                   <td className="t-title"><span className="ellipsis">{L.dname(d.districtId)}</span><span className="small muted" style={{ fontWeight: 400 }}>{dist.cities?.join(', ')}</span></td>
-                  <td className="nowrap"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} />{L.user(dist.coordinatorId)?.name ?? (dist.coordinatorName ? <span className="muted">{dist.coordinatorName}</span> : <span className="muted">не назначен</span>)}</span></td>
+                  <td className="nowrap"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} /><DistrictCoordinator district={dist} registered={L.user(dist.coordinatorId)} directory={directory} /></span></td>
                   <td className="right">{team}</td>
                   <td className="right">{active}</td>
                   <td className={`right ${overdue ? 'overdue-text' : ''}`}>{overdue}</td>
@@ -177,6 +180,7 @@ function PersonPage({ id }: { id: string }) {
 
 function DistrictPage({ id }: { id: string }) {
   const s = useAppState();
+  const directory = useDistrictDirectory();
   const me = useMe();
   const L = useLookup();
   const period = usePeriod();
@@ -193,7 +197,7 @@ function DistrictPage({ id }: { id: string }) {
     <>
       <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => go('/team/districts')} style={{ marginBottom: 10 }}>Все округа</Button>
       <div className="page-head">
-        <div className="grow"><h1>{d.num ? `${d.num} округ · ` : 'Округ '}{d.name}</h1><div className="sub">Координатор: {coord ? <a href={`#/team/people/${coord.id}`}>{coord.name}</a> : d.coordinatorName ? <>{d.coordinatorName} <span className="muted">(по таблице, ещё нет учётной записи)</span></> : 'не назначен'} · команда {team.length} чел.</div>{d.cities?.length ? <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>{d.cities.map((c) => <span key={c} className="pill">{c}</span>)}</div> : null}</div>
+        <div className="grow"><h1>{d.num ? `${d.num} округ · ` : 'Округ '}{d.name}</h1><div className="sub">Координатор: <DistrictCoordinator district={d} registered={coord} directory={directory} detailed /> · команда {team.length} чел.</div>{d.cities?.length ? <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>{d.cities.map((c) => <span key={c} className="pill">{c}</span>)}</div> : null}</div>
         <ContextBar showDistrict={false} />
         {P.canAssignIn(me, id) && <Button variant="primary" icon={Plus} onClick={() => openNewTask({ districtId: id })}>Задача</Button>}
         {P.canCreateEvent(me) && (P.isManager(me) || me.districtId === id) && <Button icon={CalendarDays} onClick={() => openNewEvent({ districtId: id })}>Мероприятие</Button>}
