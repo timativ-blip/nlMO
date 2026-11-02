@@ -165,7 +165,7 @@ export interface Notification {
   at: string;
   read: boolean;
   link: string;
-  kind: 'assign' | 'comment' | 'review' | 'event' | 'report' | 'deadline' | 'media';
+  kind: 'assign' | 'comment' | 'review' | 'event' | 'report' | 'deadline' | 'media' | 'message' | 'meeting';
 }
 
 export interface AuditItem {

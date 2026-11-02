@@ -182,7 +182,7 @@ function DistrictsCard() {
   );
 }
 
-const NOTIFY_LABEL: Record<Notification['kind'], string> = { assign: 'Назначение задачи', deadline: 'Сроки и их изменения', comment: 'Комментарии', review: 'Проверка результата', event: 'Изменения мероприятий', report: 'Отчёты и сводки', media: 'Шаблоны медиа-штаба и напоминания о постах' };
+const NOTIFY_LABEL: Record<Notification['kind'], string> = { assign: 'Назначение задачи', deadline: 'Сроки и их изменения', comment: 'Комментарии', review: 'Проверка результата', event: 'Изменения мероприятий', report: 'Отчёты и сводки', media: 'Шаблоны медиа-штаба и напоминания о постах', message: 'Личные сообщения', meeting: 'Приглашения во встречи' };
 
 export function SettingsPage() {
   const s = useAppState();
@@ -197,7 +197,7 @@ export function SettingsPage() {
           <h2>Уведомления</h2>
           <p className="small muted" style={{ margin: 0 }}>Какие события показывать в колокольчике. Telegram подключается в профиле.</p>
           {(Object.keys(NOTIFY_LABEL) as Notification['kind'][]).map((k) => (
-            <label key={k} className="check"><input type="checkbox" checked={s.ui.notify[k]} onChange={(e) => { setUi({ notify: { ...s.ui.notify, [k]: e.target.checked } }); toast('Настройка сохранена'); }} />{NOTIFY_LABEL[k]}</label>
+            <label key={k} className="check"><input type="checkbox" checked={s.ui.notify[k] !== false} onChange={(e) => { setUi({ notify: { ...s.ui.notify, [k]: e.target.checked } }); toast('Настройка сохранена'); }} />{NOTIFY_LABEL[k]}</label>
           ))}
         </div>
         {P.canImport(me) && (

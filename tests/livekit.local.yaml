@@ -1,0 +1,16 @@
+# Isolated loopback-only test server. Never use these fixture keys for a public server.
+port: 7880
+bind_addresses: [127.0.0.1]
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  enable_loopback_candidate: true
+keys:
+  local-communications: local-development-fixture-key-not-for-production
+webhook:
+  api_key: local-communications
+  urls:
+    - http://127.0.0.1:5192/functions/v1/communications/webhook
+logging:
+  level: warn

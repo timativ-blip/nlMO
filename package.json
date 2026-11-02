@@ -10,6 +10,7 @@
     "test:analytics": "vite build --ssr src/data/insights.ts --outDir .test-build && node --test tests/insights.test.mjs",
     "test:startup": "vite build --config tests/startup.vite.config.ts --ssr tests/startup-entry.ts --outDir .test-startup && node --test tests/startup.test.mjs",
     "test:connection": "vite build --ssr src/lib/backend-transport.ts --outDir .test-connection && node --test tests/connection.test.mjs",
+    "test:communications": "tsc --project tests/communications.tsconfig.json && vite build --config tests/communications.vite.config.ts --ssr tests/communications-entry.ts --outDir .test-communications && node --test tests/communications*.test.mjs",
     "test:media": "vite build --ssr src/data/media-season.ts --outDir .test-media && node --test tests/media-season.test.mjs",
     "test:workflows": "vite build --ssr tests/workflows-entry.ts --outDir .test-workflows && node --test tests/workflows.test.mjs tests/workflows-db.test.mjs",
     "test:telegram": "tsc --project tests/telegram.tsconfig.json && vite build --ssr tests/telegram-entry.ts --outDir .test-telegram && node --test tests/telegram*.test.mjs"
@@ -19,6 +20,8 @@
     "@fontsource/montserrat": "5.1.0",
     "@fontsource/oswald": "^5.1.0",
     "@supabase/supabase-js": "^2.45.4",
+    "livekit-client": "2.23.0",
+    "livekit-server-sdk": "2.19.2",
     "lucide-react": "0.441.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

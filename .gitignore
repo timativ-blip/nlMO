@@ -9,4 +9,5 @@ dist
 .test-workflows
 .test-telegram
 .test-connection
+.test-communications
 supabase/.temp/
