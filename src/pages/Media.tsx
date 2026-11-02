@@ -53,7 +53,7 @@ export function useJson<T>(name: string, everyMs: number) {
           if (result.error) throw new Error(result.error);
           return result;
         }, 20000, 'Не удалось дождаться данных медиа.');
-        if (alive) { setData(d as T); setError(false); }
+        if (alive) { setData(d as T); setError(name === 'media-pd' && (d as PdData).sourceStatus === 'stale'); }
       } catch { if (alive) setError(true); }
       finally { loading = false; }
     };

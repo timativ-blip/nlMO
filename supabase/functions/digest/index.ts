@@ -3,7 +3,9 @@
 //  • pd_remind — будни 12:00 МСК: напоминание написать пост тем, кто не писал в «Пиши-Делись» 3+ дня.
 // Уведомления пишутся в таблицу notifications — дальше их разносит триггер notify_telegram.
 // { dry: true } — вернуть тексты без отправки (для проверки).
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { isPdTimeline } from '../_shared/media-timeline.ts';
+import { lastPdPost, pdRecent, pdWeekLine, type PdSnapshot } from './pd-summary.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
 const admin = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -20,14 +22,14 @@ const plural = (n: number, f: [string, string, string]) => { const a = Math.abs(
 const delta = (a: number, b: number) => (a === b ? '=' : a > b ? `↑${a - b}` : `↓${b - a}`);
 
 type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-interface Pd { people: [string, string][]; posts: any[][] } // eslint-disable-line @typescript-eslint/no-explicit-any
+type Pd = PdSnapshot;
 
 async function secret(key: string) {
   const { data } = await admin.from('app_secrets').select('value').eq('key', key).single();
   return data?.value as string | undefined;
 }
 async function loadPd(): Promise<Pd | null> {
-  try { const r = await fetch(`${URL_}/functions/v1/media-pd`); const d = await r.json(); return d.error ? null : d; } catch { return null; }
+  try { const r = await fetch(`${URL_}/functions/v1/media-pd`, { cache: 'no-store', signal: AbortSignal.timeout(20000) }); if (!r.ok) return null; const d = await r.json(); return !isPdTimeline(d) ? null : d; } catch { return null; }
 }
 const rows = async (t: string) => ((await admin.from(t).select('data')).data ?? []).map((x) => x.data as Doc);
 
@@ -44,8 +46,7 @@ async function weekly(dry: boolean) {
   const active = profiles.filter((p) => p.active !== false && !p.pending);
   const reqTitles = ['staff', 'media', 'coordinator', 'deputy_coordinator', 'deputy'];
   const workdays = Array.from({ length: 5 }, (_, k) => addDays(wFrom, k));
-  const pdAsOf = pd?.posts.reduce((m, p) => (p[0] > m ? p[0] : m), '') ?? '';
-  const pdFresh = pdAsOf >= wTo;
+  const pdFresh = pdRecent(pd, addDays(wTo, -2));
   const dname = (id: string) => { const d = districts.find((x) => x.id === id); return d ? `${d.num ?? ''} ${d.name}`.trim() : id; };
 
   const stat = (did: string | null) => {
@@ -65,7 +66,7 @@ async function weekly(dry: boolean) {
     const wrote = new Set(pd.posts.filter((p) => p[0] >= from).map((p) => p[4]));
     return pd.people.map((p, i) => ({ name: p[0], g: p[1], i })).filter((p) => p.g === did && !wrote.has(p.i)).map((p) => p.name);
   };
-  const pdLine = (s: ReturnType<typeof stat>) => (pd ? (pdFresh ? `Посты «Пиши-Делись»: ${s.postsW} (${delta(s.postsW, s.postsP)} к пред. неделе)` : `«Пиши-Делись»: таблица не обновлялась с ${ddmm(pdAsOf)}`) : '«Пиши-Делись»: данные недоступны');
+  const pdLine = (s: ReturnType<typeof stat>) => pdWeekLine(pd, s.postsW, s.postsP, wTo);
 
   const out: { userId: string; id: string; text: string; link: string; kind: string }[] = [];
   const head = `Сводка за неделю ${ddmm(wFrom)}–${ddmm(wTo)}`;
@@ -109,9 +110,9 @@ async function pdRemind(dry: boolean) {
   const [profiles, pd] = await Promise.all([rows('profiles'), loadPd()]);
   if (!pd) return { skipped: 'нет данных «Пиши-Делись»' };
   const t = today();
-  const asOf = pd.posts.reduce((m, p) => (p[0] > m ? p[0] : m), '');
-  // таблица давно не обновлялась — напоминания были бы ложными
-  if (asOf < addDays(t, -2)) return { skipped: `таблица не обновлялась с ${asOf}` };
+  const asOf = lastPdPost(pd);
+  // The last publication date is not the spreadsheet's edit timestamp.
+  if (!pdRecent(pd, addDays(t, -2))) return { skipped: pd.sourceStatus === 'stale' ? 'не удалось обновить выгрузку' : `в выгрузке нет недавних публикаций; последняя дата: ${asOf || 'нет'}` };
   const last = new Map<number, string>();
   pd.posts.forEach((p) => { if ((last.get(p[4]) ?? '') < p[0]) last.set(p[4], p[0]); });
   const byKey = new Map(pd.people.map((p, i) => [nameKey(p[0]), i]));
