@@ -58,8 +58,7 @@ export const canReviewReport = (u: User, r: Report) => r.status === 'sent' && u.
 export const canEditWeights = (u: User) => u.role === 'head';
 export const canImport = (u: User) => u.role !== 'member';
 /** Роль и доступ: руководство — для всех; координатор — для участников своего округа (не для себя). */
-export const canManageUser = (actor: User, target: User) =>
-  actor.role === 'head' || (actor.role === 'coordinator' && actor.id !== target.id && target.role === 'member' && !!actor.districtId && target.districtId === actor.districtId);
+export const canManageUser = (actor: User, _target: User) => actor.role === 'head';
 export const mustReportDaily = (u: User) => DAILY_REQUIRED.includes(teamRoleOf(u));
 export function canSeeDaily(viewer: User, author: User | undefined) {
   if (!author) return false;

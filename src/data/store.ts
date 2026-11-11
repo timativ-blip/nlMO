@@ -195,7 +195,9 @@ async function boot(uid: string) {
       setPhase('error', st.exists ? 'Ваша учётная запись отключена. Обратитесь к руководителю области или координатору округа.' : 'Учётная запись найдена, но профиль не создан. Обратитесь к руководителю области.');
       return;
     }
+    if (me.pending) { setPhase('pending', me.name); return; }
     if (me.active === false) { setPhase('error', 'Ваша учётная запись отключена. Обратитесь к руководителю области.'); return; }
+    if (me.role === 'member') { setPhase('error', 'Кабинет теперь доступен координаторам, заместителям и сотрудникам штаба. Обратитесь к руководителю для изменения роли.'); return; }
     setPhase('ready');
     // Черновики недельных отчётов создаёт тот, у кого есть право (руководитель или координатор)
     const can = (d: string) => me.role === 'head' || (me.role === 'coordinator' && me.districtId === d);
@@ -741,7 +743,7 @@ export async function importPeople(rows: Partial<User>[], mode: 'skip' | 'update
 
 /* ───────── Команда: учётные записи и округа ───────── */
 const me = () => state.users.find((u) => u.id === state.session.userId)!;
-export function canAddPerson(u: User) { return u.role === 'head' || u.role === 'coordinator'; }
+export function canAddPerson(u: User) { return u.role === 'head'; }
 
 /** Добавить сотрудника. В рабочем режиме создаётся учётная запись и выдаётся временный пароль. */
 export async function addPerson(p: Partial<User>): Promise<{ id: string; password: string }> {

@@ -22,4 +22,5 @@ jobs:
       - run: npm run test:workflows
       - run: npm run test:telegram
       - run: npm run test:communications
+      - run: npm run test:headquarters
       - run: npm run build

@@ -11,3 +11,5 @@ dist
 .test-connection
 .test-communications
 supabase/.temp/
+
+.test-headquarters

@@ -398,6 +398,7 @@ function GroupsView({ pd }: { pd: PdData | null }) {
   );
   return (
     <>
+      {G.data.sourceStatus === 'stale' && <p className="callout warning" role="status">Не удалось обновить мониторинг. Показана последняя проверка; автоматические напоминания по этим данным не отправляются.</p>}
       <div className="toolbar">
         <Segmented label="Сеть" value={net} onChange={setNet} options={[{ value: 'all', label: 'ВК и Telegram' }, { value: 'vk', label: 'ВКонтакте' }, { value: 'tg', label: 'Telegram' }]} />
         <Segmented label="Порядок" value={sort} onChange={setSort} options={[{ value: 'worst', label: 'Давно молчат' }, { value: 'okr', label: 'По округам' }]} />

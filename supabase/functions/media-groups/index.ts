@@ -157,9 +157,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
     if (!cache || Date.now() - cache.at > 900 * 1000) cache = { at: Date.now(), data: await build() };
-    return json(cache.data, 200, 900);
+    return json({...cache.data,sourceStatus:'ok'}, 200, 900);
   } catch (_e) {
-    if (cache) return json(cache.data, 200, 30);
+    if (cache) return json({...cache.data,sourceStatus:'stale'}, 200, 30);
     return json({ error: 'source unavailable' }, 502, 0);
   }
 });

@@ -7,8 +7,8 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const fail = (error: string, status = 400) => json({ error }, status);
-const ROLES = ['head', 'coordinator', 'staff', 'member'];
-const TITLES = ['head', 'developer', 'deputy', 'coordinator', 'deputy_coordinator', 'staff', 'media', 'member', 'party_member'];
+const ROLES = ['head', 'coordinator', 'staff'];
+const TITLES = ['head', 'developer', 'deputy', 'coordinator', 'deputy_coordinator', 'staff', 'media'];
 
 function genPassword() {
   const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -67,10 +67,10 @@ Deno.serve(async (req) => {
         if (!d) return fail('Выберите свой округ.');
         districtId = d.id;
       }
-      const r = await createPerson({ name: p.name, email: p.email, phone: p.phone, position: p.position, role: kind === 'hq' ? 'staff' : 'member', title: kind === 'hq' ? 'staff' : 'member', districtId }, String(body.password), { active: false, pending: true });
+      const r = await createPerson({ name: p.name, email: p.email, phone: p.phone, position: p.position, role: kind === 'hq' ? 'staff' : 'coordinator', title: kind === 'hq' ? 'staff' : 'deputy_coordinator', districtId }, String(body.password), { active: false, pending: true });
       const { data: all } = await admin.from('profiles').select('id, data');
-      const approvers = (all ?? []).filter((x) => x.data.active !== false && (x.data.role === 'head' || (kind === 'okrug' && x.data.role === 'coordinator' && x.data.districtId === districtId)));
-      const text = `Новая заявка на доступ: ${r.profile.name} — ${kind === 'hq' ? 'сотрудник штаба МО' : `участник округа ${districtId}`}`;
+      const approvers = (all ?? []).filter((x) => x.data.active !== false && x.data.role === 'head');
+      const text = `Новая заявка на доступ: ${r.profile.name} — ${kind === 'hq' ? 'сотрудник штаба МО' : `координатор или заместитель округа ${districtId}`}`;
       if (approvers.length) await admin.from('notifications').insert(approvers.map((x) => {
         const nid = `reg_${r.id.slice(0, 8)}_${x.id.slice(0, 8)}`;
         return { id: nid, user_id: x.id, data: { id: nid, userId: x.id, text, at: new Date().toISOString(), read: false, link: '#/team/requests', kind: 'assign' } };
@@ -83,11 +83,11 @@ Deno.serve(async (req) => {
     if (!auth.user) return fail('Войдите в систему заново.', 401);
     const { data: meRow } = await admin.from('profiles').select('data').eq('id', auth.user.id).single();
     const me = meRow?.data;
-    if (!me || me.active === false) return fail('Учётная запись не активна.', 403);
+    if (!me || me.active === false || me.pending) return fail('Учётная запись не активна.', 403);
 
     if (body.action === 'create_user') {
       const p: NewPerson = body.profile ?? {};
-      const allowed = me.role === 'head' || (me.role === 'coordinator' && p.role === 'member' && p.districtId === me.districtId);
+      const allowed = me.role === 'head';
       if (!allowed) return fail('Добавлять людей может руководитель области; координатор — только участников своего округа.', 403);
       const password = genPassword();
       const r = await createPerson(p, password);

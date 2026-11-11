@@ -6,6 +6,7 @@ import { meetingWhen } from '../lib/meeting-time';
 import { useMe } from './hooks';
 import { PersonName } from './MeetingInvites';
 import { Button, Modal, toast } from './kit';
+import AiMinutes from './AiMinutes';
 
 const blank = (): MeetingDocumentContent => ({ agenda: '', summary: '', decisions: '', actions: '' });
 const fields: { key: keyof MeetingDocumentContent; label: string; placeholder: string }[] = [
@@ -91,7 +92,8 @@ export default function MeetingMinutes({ meetingId }: { meetingId: string }) {
           {doc.canEdit ? <>
             <p className="small muted">Повестка видна сотрудникам с доступом к встрече после сохранения. Черновик протокола видят только организатор и ответственный. Итоги можно дописать после звонка.</p>
             {doc.draft && doc.draft.version !== version && dirty && <p className="callout warning" role="status">В другом окне появились новые правки. Скопируйте свой текст перед загрузкой сохранённой версии.<Button size="sm" onClick={() => { accept(doc, true); }}>Загрузить сохранённую версию</Button></p>}
-            <div className="comm-minutes-fields">{fields.map(({ key, label, placeholder }) => <label key={key} className="field">{label}<textarea className="input" rows={key === 'agenda' ? 3 : 4} maxLength={8000} value={content[key]} disabled={busy} onChange={event => setContent(value => ({ ...value, [key]: event.target.value }))} placeholder={placeholder} /><span className="small muted">{content[key].length} / 8000</span></label>)}</div>
+            <AiMinutes target={{meetingId}} onApply={setContent} />
+            <div className="comm-minutes-fields">{fields.map(({ key, label, placeholder }) => <label key={key} className="field">{label}<textarea className="input" rows={key === 'agenda' ? 3 : 4} maxLength={8000} aria-label={label} value={content[key]} disabled={busy} onChange={event => setContent(value => ({ ...value, [key]: event.target.value }))} placeholder={placeholder} /><span className="small muted">{content[key].length} / 8000</span></label>)}</div>
             <p className="small muted" role="status">{dirty ? 'Есть несохранённые изменения.' : doc.draft?.updatedAt ? `Черновик сохранён: ${meetingWhen(doc.draft.updatedAt)}.` : 'Начните с повестки или назначьте ответственного.'}</p>
             {doc.published && <details className="comm-minutes-previous"><summary>Отправленная версия {doc.published.revision} · получателей: {doc.published.recipients}</summary><PublishedMinutes doc={doc} /></details>}
           </> : <>

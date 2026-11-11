@@ -5,3 +5,7 @@ verify_jwt = false
 [functions.communications]
 # The handler verifies user JWTs and signed LiveKit webhooks separately.
 verify_jwt = false
+
+[functions.meeting-ai]
+# Own verified JWT and editor authorization; never uses a browser-provided provider key.
+verify_jwt = false

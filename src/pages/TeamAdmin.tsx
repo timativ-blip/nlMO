@@ -23,7 +23,7 @@ function AddPersonModal({ onClose }: { onClose: () => void }) {
   const s = useAppState();
   const me = useMe();
   const head = me.role === 'head';
-  const [v, setV] = useState<Partial<User>>({ name: '', email: '', phone: '', position: '', role: 'member', title: 'member', districtId: head ? '' : me.districtId });
+  const [v, setV] = useState<Partial<User>>({ name: '', email: '', phone: '', position: '', role: 'coordinator', title: 'coordinator', districtId: head ? '' : me.districtId });
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ name: string; email: string; password: string } | null>(null);
@@ -46,7 +46,7 @@ function AddPersonModal({ onClose }: { onClose: () => void }) {
     } finally { setBusy(false); }
   };
   if (created) return <PasswordModal title="Сотрудник добавлен" person={created} onClose={onClose} />;
-  const roles = TEAM_ROLES.filter((r) => head || r.access === 'member');
+  const roles = TEAM_ROLES.filter((r) => r.access !== 'member' && (head || r.key === 'deputy_coordinator'));
   return (
     <Modal open onClose={onClose} title="Добавить человека" width={600} footer={<><Button variant="ghost" onClick={onClose}>Отмена</Button><Button variant="primary" icon={UserPlus} disabled={busy} onClick={save}>{busy ? 'Создаю…' : 'Добавить'}</Button></>}>
       <div className="col" style={{ gap: 14 }}>
@@ -100,7 +100,7 @@ export function PersonAdminCard({ u }: { u: User }) {
       <h2 className="row"><ShieldCheck size={18} />Доступ и роль</h2>
       <div className="grid g-3" style={{ gap: 12 }}>
         <Field label="Роль в команде" hint={head ? TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.hint : 'Координатор назначает участника или члена партии'}>
-          <Select value={teamRoleOf(u)} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value)!; run(() => setUserAdmin(u.id, { role: r.access, title: r.key as TeamRole }), 'Роль изменена'); }} options={TEAM_ROLES.filter((r) => head || r.access === 'member').map((r) => ({ value: r.key, label: r.label }))} />
+          <Select value={teamRoleOf(u)} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value)!; run(() => setUserAdmin(u.id, { role: r.access, title: r.key as TeamRole }), 'Роль изменена'); }} options={TEAM_ROLES.filter((r) => r.access !== 'member' && (head || r.key === 'deputy_coordinator')).map((r) => ({ value: r.key, label: r.label }))} />
         </Field>
         {head && <Field label="Округ"><Select value={u.districtId ?? ''} onChange={(e) => run(() => setUserAdmin(u.id, { districtId: e.target.value || null }), 'Округ изменён')} options={[{ value: '', label: 'Вся область' }, ...s.districts.map((d) => ({ value: d.id, label: `${d.num ?? ''} ${d.name}`.trim() }))]} /></Field>}
         <Field label="Доступ"><Select value={u.active ? 'on' : 'off'} onChange={(e) => run(() => setUserAdmin(u.id, { active: e.target.value === 'on', pending: false }), e.target.value === 'on' ? 'Доступ включён' : 'Доступ отключён — человек больше не сможет войти')} options={[{ value: 'on', label: 'Активен' }, { value: 'off', label: 'Отключён' }]} /></Field>
@@ -116,7 +116,7 @@ export function PersonAdminCard({ u }: { u: User }) {
 export function usePendingRequests() {
   const s = useAppState();
   const me = useMe();
-  return s.users.filter((u) => u.pending && u.active === false && (me.role === 'head' || (me.role === 'coordinator' && u.role === 'member' && u.districtId === me.districtId)));
+  return s.users.filter((u) => u.pending && u.active === false && me.role === 'head');
 }
 export function Requests() {
   const me = useMe();
@@ -127,14 +127,14 @@ export function Requests() {
   return (
     <div className="card">
       {list.map((u) => {
-        const hq = u.role !== 'member';
-        const options = TEAM_ROLES.filter((r) => (me.role === 'head' ? (hq ? r.access === 'staff' || r.access === 'head' : r.access === 'member' || r.access === 'coordinator') : r.access === 'member'));
-        const pick = choice[u.id] ?? teamRoleOf(u);
+        const hq = u.role === 'staff' || u.role === 'head';
+        const options = TEAM_ROLES.filter((r) => r.access !== 'member');
+        const pick = choice[u.id] ?? (u.role === 'member' ? 'deputy_coordinator' : teamRoleOf(u));
         return (
           <div key={u.id} className="req-row">
             <div className="grow">
               <b>{u.name}</b>
-              <div className="small muted">{hq ? 'Сотрудник штаба МО' : `Участник округа ${L.dname(u.districtId)}`} · {u.email}{u.phone ? ` · ${u.phone}` : ''}</div>
+              <div className="small muted">{hq ? 'Сотрудник штаба МО' : `Координатор / заместитель округа ${L.dname(u.districtId)}`} · {u.email}{u.phone ? ` · ${u.phone}` : ''}</div>
             </div>
             <select className="select select-sm" style={{ width: 220 }} value={pick} onChange={(e) => setChoice({ ...choice, [u.id]: e.target.value as TeamRole })} aria-label="Роль после одобрения">
               {options.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}

@@ -42,7 +42,7 @@ export default function AuthGate({ preview = false }: { preview?: boolean }) {
         <div className="auth-card col" style={{ gap: 12 }}>
           <div className="badge badge-brand" style={{ alignSelf: 'flex-start' }}><Clock size={13} />Заявка на рассмотрении</div>
           <h2 style={{ fontSize: 22 }}>{error ? `${firstName(error)}, заявка отправлена` : 'Заявка отправлена'}</h2>
-          <p className="muted" style={{ margin: 0 }}>Её проверит координатор вашего округа или руководство области. Как только доступ откроют, войдите снова — откроется ваш кабинет.</p>
+          <p className="muted" style={{ margin: 0 }}>Её проверит руководство области. Как только доступ откроют, войдите снова — откроется ваш кабинет.</p>
           <div className="row"><Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>Проверить снова</Button><Button onClick={() => signOut()}>Выйти</Button></div>
         </div>
       </Shell>
@@ -87,9 +87,9 @@ function Register() {
   return (
     <form className="auth-card col" style={{ gap: 14 }} onSubmit={submit}>
       <h2 style={{ fontSize: 22 }}>Регистрация</h2>
-      <p className="muted" style={{ margin: 0 }}>После отправки заявку проверит координатор округа или руководство области — затем откроется доступ.</p>
+      <p className="muted" style={{ margin: 0 }}>Приложение для координаторов, заместителей и сотрудников штаба. После отправки руководство области проверит заявку и назначит роль.</p>
       <div className="field"><span className="label">Кто вы</span>
-        <Segmented label="Кто вы" value={kind} onChange={(k) => { setKind(k); setErrs({}); }} options={[{ value: 'okrug', label: 'Участник округа' }, { value: 'hq', label: 'Сотрудник штаба МО' }]} />
+        <Segmented label="Кто вы" value={kind} onChange={(k) => { setKind(k); setErrs({}); }} options={[{ value: 'okrug', label: 'Координатор / заместитель' }, { value: 'hq', label: 'Сотрудник штаба МО' }]} />
       </div>
       {kind === 'okrug' && (
         <Field label="Ваш округ" required error={errs.districtId}>

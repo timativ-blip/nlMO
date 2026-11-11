@@ -4,7 +4,7 @@ export const AUTH_STORAGE_KEY = 'sb-test-auth-token';
 export const BACKEND = true;
 export const FUNCTIONS_URL = 'https://example.invalid/functions/v1';
 export const backendUrl = (value: string) => value;
-const user = { id: 'test-user', name: 'Test User', role: config.role ?? 'member', active: true, districtId: null };
+const user = { id: 'test-user', name: 'Test User', role: config.role ?? 'staff', active: config.active ?? true, pending: config.pending ?? false, districtId: null };
 const session = { user: { id: user.id } };
 
 function query(name: string) {

@@ -173,6 +173,15 @@ export async function unlinkTelegram(uid: string) {
 
 /* ───────── Файлы ───────── */
 export const STORAGE_PREFIX = 'sb://attachments/';
+export const PROTOCOL_PREFIX = 'sb://meeting-protocols/';
+export async function uploadProtocolFile(uid: string, file: Blob, name: string) {
+  if (file.size > 10 * 1024 * 1024) throw new Error('Файл больше 10 МБ.');
+  const ext = (name.match(/\.[A-Za-z0-9]{1,8}$/)?.[0] ?? '').toLowerCase();
+  const path = uid + '/' + crypto.randomUUID() + ext;
+  const { error } = await sb!.storage.from('meeting-protocols').upload(path, file, { contentType: file.type || undefined });
+  if (error) throw new Error(humanError(error.message));
+  return PROTOCOL_PREFIX + path;
+}
 export async function uploadFile(uid: string, file: Blob, name: string) {
   // Хранилище принимает только латиницу в ключах; исходное имя файла хранится во вложении
   const ext = (name.match(/\.[A-Za-z0-9]{1,8}$/)?.[0] ?? '').toLowerCase();
@@ -186,7 +195,8 @@ const signed = new Map<string, { url: string; until: number }>();
 export async function signedUrl(ref: string) {
   const hit = signed.get(ref);
   if (hit && hit.until > Date.now()) return hit.url;
-  const { data, error } = await sb!.storage.from('attachments').createSignedUrl(ref.slice(STORAGE_PREFIX.length), 3600);
+  const protocol = ref.startsWith(PROTOCOL_PREFIX);
+  const { data, error } = await sb!.storage.from(protocol ? 'meeting-protocols' : 'attachments').createSignedUrl(ref.slice(protocol ? PROTOCOL_PREFIX.length : STORAGE_PREFIX.length), 3600);
   if (error || !data) return '';
   const url = backendUrl(data.signedUrl);
   signed.set(ref, { url, until: Date.now() + 50 * 60e3 });

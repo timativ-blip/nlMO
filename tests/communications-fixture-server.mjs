@@ -3,6 +3,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { createMeetingAiHandler } from '../.test-headquarters/headquarters-entry.js';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { createClient } from '@supabase/supabase-js';
@@ -15,8 +16,8 @@ const service = 'isolated-service-key-not-for-production';
 const profiles = [
  { id:'00000000-0000-0000-0000-000000000001',name:'Анна Тестовая',role:'head',position:'Организатор',active:true,pending:false,districtId:null },
  { id:'00000000-0000-0000-0000-000000000002',name:'Борис Тестовый',role:'coordinator',position:'Координатор',active:true,pending:false,districtId:'118' },
- { id:'00000000-0000-0000-0000-000000000003',name:'Вера Тестовая',role:'member',position:'Участник команды',active:true,pending:false,districtId:'118' },
- { id:'00000000-0000-0000-0000-000000000004',name:'Денис Без доступа',role:'member',position:'Другой сотрудник',active:true,pending:false,districtId:'119' },
+ { id:'00000000-0000-0000-0000-000000000003',name:'Вера Тестовая',role:'staff',position:'Участник команды',active:true,pending:false,districtId:'118' },
+ { id:'00000000-0000-0000-0000-000000000004',name:'Денис Без доступа',role:'coordinator',position:'Другой сотрудник',active:true,pending:false,districtId:'119' },
 ];
 const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url');
 const tokenFor = id => { const data=b64({alg:'HS256',typ:'JWT'})+'.'+b64({sub:id,role:'authenticated',aud:'authenticated',exp:Math.floor(Date.now()/1000)+3600});return data+'.'+createHmac('sha256',signing).update(data).digest('base64url'); };
@@ -34,9 +35,11 @@ await db.exec('create table public.media_briefs(id text primary key,data jsonb,c
 await db.exec(readFileSync(new URL('../supabase/migrations/20261102075931_communications_and_meetings.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102100858_meeting_scheduling_notifications.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/20261102110233_meeting_minutes.sql',import.meta.url),'utf8'));
+await db.exec(readFileSync(new URL('../supabase/migrations/20261111072559_headquarters_workspace.sql',import.meta.url),'utf8'));
 for(const profile of profiles){await db.query('insert into auth.users values($1)',[profile.id]);await db.query('insert into public.profiles(id,data) values($1,$2::jsonb)',[profile.id,JSON.stringify({...profile,email:profile.id+'@example.invalid',phone:'',birthdayVisibility:'hidden'})]);}
+for(const id of ['118','119'])await db.query('insert into public.districts(id,data) values($1,$2::jsonb)',[id,JSON.stringify({id,num:Number(id),name:'Тестовый округ '+id,coordinatorId:null})]);
 const tables=['comm_conversations','comm_members','comm_messages','comm_meetings','comm_participants','comm_invitations','comm_room_messages','comm_meeting_minutes','notifications'];
-const sockets=new Set();
+const sockets=new Set();const storedFiles=new Map();
 async function snapshot(){const result={};for(const table of tables){const rows=(await db.query('select * from public.'+table)).rows;result[table]=new Map(rows.map(row=>[row.id??(row.conversation_id??row.meeting_id)+':'+row.user_id,row]));}return result;}
 async function runAs(role,uid,sql,args=[]){await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid??'']);await db.exec('set role '+role);try{return await db.query(sql,args);}finally{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub','',false)");}}
 async function broadcasts(before,after){
@@ -58,6 +61,7 @@ let directoryNow=Date.now(), directoryName='Петухов Тимофей', dire
 const directoryHandler=createDistrictDirectoryHandler(async()=>new Response(directoryFail?'Unavailable':'№округа,Город,Координатор\n121,Красногорск,'+directoryName,{status:directoryFail?502:200}),()=>directoryNow);
 await db.query('insert into public.districts(id,data) values($1,$2::jsonb)',['121',JSON.stringify({id:'121',num:121,name:'Красногорский',cities:['Красногорск','Истра'],coordinatorId:null,coordinatorName:'Блюдин Алексей'})]);
 const handler=createCommunicationsHandler({admin,userClient:jwt=>createClient(base,'fixture-public-key',{global:{headers:{Authorization:'Bearer '+jwt}},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}),media,appOrigin:origin,allowLocalMedia:true,hookSecret:async()=> 'local-hook-not-for-production'});
+const aiHandler=createMeetingAiHandler({admin,userClient:jwt=>createClient(base,'fixture-public-key',{global:{headers:{Authorization:'Bearer '+jwt}},auth:{persistSession:false,autoRefreshToken:false}}),origin});
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,base), chunks=[];for await(const chunk of req)chunks.push(chunk);const raw=Buffer.concat(chunks);
  const cors={'access-control-allow-origin':origin,'access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','cache-control':'no-store','content-type':'application/json'};
@@ -65,18 +69,26 @@ const server=createServer(async(req,res)=>{
  if(req.method==='OPTIONS')return reply({});
  const token=(req.headers.authorization??'').replace(/^Bearer\s+/i,''), uid=subject(token), role=token===service?'service_role':uid?'authenticated':'anon';
  try{
+  if(url.pathname.startsWith('/storage/v1/object/')){
+   const path=decodeURIComponent(url.pathname.split('/object/')[1]);
+   if(req.method==='POST'&&!path.startsWith('sign/')){if(!uid||!path.startsWith('meeting-protocols/'+uid+'/'))return reply({message:'Denied'},403);storedFiles.set(path,raw);return reply({Key:path,Id:crypto.randomUUID()});}
+   if(req.method==='POST'&&path.startsWith('sign/')){const key=path.slice(5);if(!uid||!storedFiles.has(key))return reply({message:'Not found'},404);return reply({signedURL:'/object/fixture/'+key});}
+   if(req.method==='GET'&&path.startsWith('fixture/')){const bytes=storedFiles.get(path.slice(8));if(!bytes)return reply({message:'Not found'},404);res.writeHead(200,{'Content-Type':'application/octet-stream','access-control-allow-origin':origin});return res.end(bytes);}
+  }
   if(url.pathname==='/auth/v1/user'){if(!uid)return reply({message:'Invalid token'},401);const profile=profiles.find(profile=>profile.id===uid);return reply({id:uid,aud:'authenticated',role:'authenticated',email:uid+'@example.invalid',app_metadata:{},user_metadata:{},created_at:'2026-01-01T00:00:00Z'});}
   if(url.pathname==='/auth/v1/logout')return reply({});
   if(url.pathname==='/auth/v1/token')return reply({error:'Fixture login uses seeded independent sessions'},400);
-  if(url.pathname==='/fixture/directory'&&req.method==='POST'){const change=JSON.parse(raw);if(typeof change.name==='string')directoryName=change.name;directoryFail=!!change.fail;directoryNow+=60001;return reply({ok:true});}
+  if(url.pathname==='/fixture/hq-reset'&&req.method==='POST'){await serialized(async()=>{await db.exec('truncate hq_private.requests,hq_private.ai_jobs,public.hq_reservations,public.hq_minutes_archive,public.hq_resources,public.hq_materials cascade');await db.query("insert into hq_resources(kind,name)values('room','Штаб')");await db.query("insert into hq_materials(id,kind,name,url)values(gen_random_uuid(),'folder','Материалы НЛ','https://drive.google.com/drive/folders/1GqXSG0pCzi8QpvVr47DxPCiiUTN7B7Al')");storedFiles.clear();});return reply({ok:true});}
+  if(url.pathname==='/fixture/directory' &&req.method==='POST'){const change=JSON.parse(raw);if(typeof change.name==='string')directoryName=change.name;directoryFail=!!change.fail;directoryNow+=60001;return reply({ok:true});}
   if(url.pathname==='/functions/v1/media-groups'&&url.searchParams.get('view')==='directory'){const response=await directoryHandler(new Request(url));res.writeHead(response.status,{...cors,...Object.fromEntries(response.headers)});return res.end(await response.text());}
+  if(url.pathname==='/functions/v1/meeting-ai'){const response=await aiHandler(new Request(url,{method:req.method,headers:req.headers,body:raw.length?raw:undefined,duplex:'half'}));res.writeHead(response.status,{...cors,...Object.fromEntries(response.headers)});return res.end(await response.text());}
   if(url.pathname.startsWith('/functions/v1/communications')){
    const response=await handler(new Request(url,{method:req.method,headers:req.headers,body:raw.length?raw:undefined,duplex:'half'}));res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
   }
   if(url.pathname.startsWith('/rest/v1/rpc/')){
    const name=url.pathname.split('/').at(-1);const body=raw.length?JSON.parse(raw):{};
-   if(!['communications','communications_media','is_initialized','my_status'].includes(name))return reply({message:'Unexpected RPC'},404);
-   const result=await serialized(async()=>{const before=await snapshot();let result;try{result=await runAs(role,uid,name==='is_initialized'?'select public.is_initialized() as data':name==='my_status'?"select jsonb_build_object('exists',true,'active',true,'pending',false) as data":'select public.'+name+'($1,$2::jsonb) as data',name==='communications'||name==='communications_media'?[body.p_action,JSON.stringify(body.p_body??{})]:[]);}catch(error){return{error};}const after=await snapshot();return{data:result.rows[0].data,before,after};});
+   if(!['communications','communications_media','headquarters','is_initialized','my_status'].includes(name))return reply({message:'Unexpected RPC'},404);
+   const result=await serialized(async()=>{const before=await snapshot();let result;try{result=await runAs(role,uid,name==='is_initialized'?'select public.is_initialized() as data':name==='my_status'?"select jsonb_build_object('exists',true,'active',true,'pending',false) as data":'select public.'+name+'($1,$2::jsonb) as data',['communications','communications_media','headquarters'].includes(name)?[body.p_action,JSON.stringify(body.p_body??{})]:[]);}catch(error){return{error};}const after=await snapshot();return{data:result.rows[0].data,before,after};});
    if(result.error)return reply({message:result.error.message,code:result.error.code},result.error.code==='42501'?403:400);
    reply(result.data);void broadcasts(result.before,result.after).catch(error=>console.error('Fixture event delivery failed:',error.code??error.name));return;
   }
