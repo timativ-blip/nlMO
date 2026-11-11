@@ -16,7 +16,7 @@ function apply() {
   resolved = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#101416' : '#f3f6f5');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#042831' : '#f3f7f8');
   listeners.forEach((fn) => fn());
 }
 media.addEventListener('change', apply);

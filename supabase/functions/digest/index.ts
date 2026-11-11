@@ -3,6 +3,7 @@
 //  • pd_remind — будни 12:00 МСК: напоминание написать пост тем, кто не писал в «Пиши-Делись» 3+ дня.
 // Уведомления пишутся в таблицу notifications — дальше их разносит триггер notify_telegram.
 // { dry: true } — вернуть тексты без отправки (для проверки).
+import { districtPublicationReminders, type Monitor } from './group-reminders.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { isPdTimeline } from '../_shared/media-timeline.ts';
 import { lastPdPost, pdRecent, pdWeekLine, type PdSnapshot } from './pd-summary.ts';
@@ -43,7 +44,7 @@ async function weekly(dry: boolean) {
   const t = today();
   const wFrom = addDays(t, -7 - weekday(t)), wTo = addDays(wFrom, 6); // прошлая неделя пн–вс
   const pFrom = addDays(wFrom, -7), pTo = addDays(wFrom, -1);
-  const active = profiles.filter((p) => p.active !== false && !p.pending);
+  const active = profiles.filter((p) => p.active !== false && !p.pending && ['head','staff','coordinator'].includes(p.role));
   const reqTitles = ['staff', 'media', 'coordinator', 'deputy_coordinator', 'deputy'];
   const workdays = Array.from({ length: 5 }, (_, k) => addDays(wFrom, k));
   const pdFresh = pdRecent(pd, addDays(wTo, -2));
@@ -118,7 +119,7 @@ async function pdRemind(dry: boolean) {
   const byKey = new Map(pd.people.map((p, i) => [nameKey(p[0]), i]));
   const out: { userId: string; id: string; text: string; link: string; kind: string }[] = [];
   for (const p of profiles) {
-    if (p.active === false || p.pending) continue;
+    if (p.active === false || p.pending || !['head','staff','coordinator'].includes(p.role)) continue;
     const i = byKey.get(nameKey(p.name ?? ''));
     if (i === undefined) continue; // человека нет в списках «Пиши-Делись»
     const l = last.get(i);
@@ -133,12 +134,22 @@ async function pdRemind(dry: boolean) {
   return { sent: dry ? 0 : out.length, preview: dry ? out.map((x) => x.text) : undefined };
 }
 
+async function groupRemind(dry: boolean) {
+ const [profiles,response]=await Promise.all([rows('profiles'),fetch(`${URL_}/functions/v1/media-groups`,{cache:'no-store',signal:AbortSignal.timeout(45000)}).catch(()=>null)]);
+ if(!response?.ok)return {sent:0,skipped:'Мониторинг публикаций недоступен'};
+ const monitor=await response.json() as Monitor;
+ if(!Array.isArray(monitor.groups))return {sent:0,skipped:'Нет проверенных данных каналов'};
+ const out=districtPublicationReminders(monitor,profiles as Parameters<typeof districtPublicationReminders>[1]);
+ await send(out,dry);return {sent:dry?0:out.length,preview:dry?out.map(x=>x.text):undefined};
+}
+
 Deno.serve(async (req) => {
   if (req.headers.get('x-hook-secret') !== (await secret('hook_secret'))) return json({ error: 'forbidden' }, 403);
   try {
     const body = await req.json().catch(() => ({}));
     if (body.action === 'weekly') return json(await weekly(!!body.dry));
-    if (body.action === 'pd_remind') return json(await pdRemind(!!body.dry));
+    if (body.action === 'pd_remind') { const results=await Promise.allSettled([pdRemind(!!body.dry),groupRemind(!!body.dry)]); return json({personal:results[0].status==='fulfilled'?results[0].value:{skipped:'Личная статистика недоступна'},districts:results[1].status==='fulfilled'?results[1].value:{skipped:'Мониторинг округов недоступен'}}); }
+    if (body.action === 'group_remind') return json(await groupRemind(!!body.dry));
     return json({ error: 'unknown action' }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'error' }, 500);

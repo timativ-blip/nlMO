@@ -40,7 +40,7 @@ function Rating() {
   const me = useMe();
   const period = usePeriod();
   const [mode, setMode] = useState<'people' | 'districts'>('people');
-  const [group, setGroup] = useState<'member' | 'coordinator'>('member');
+  const [group, setGroup] = useState<'staff' | 'coordinator'>('coordinator');
   const [open, setOpen] = useState<string | null>(null);
   const [weightsOpen, setWeightsOpen] = useState(false);
   const w = s.weights;
@@ -63,7 +63,7 @@ function Rating() {
       </div>
       <div className="toolbar">
         <Segmented label="Рейтинг" value={mode} onChange={(v) => { setMode(v); setOpen(null); }} options={[{ value: 'people', label: 'Сотрудники' }, { value: 'districts', label: 'Округа' }]} />
-        {mode === 'people' && <Segmented label="Группа" value={group} onChange={setGroup} options={[{ value: 'member', label: 'Участники' }, { value: 'coordinator', label: 'Координаторы' }]} />}
+        {mode === 'people' && <Segmented label="Группа" value={group} onChange={setGroup} options={[{ value: 'staff', label: 'Штаб' }, { value: 'coordinator', label: 'Координаторы' }]} />}
         <span className="small muted">Сравниваются люди одной роли за один и тот же период.</span>
       </div>
       <div className="card table-wrap">
@@ -168,7 +168,7 @@ function Load() {
   const me = useMe();
   const L = useLookup();
   const districtId = useScopeDistrict();
-  const rows = s.users.filter((u) => u.active && (u.role === 'member' || u.role === 'coordinator') && (!districtId || u.districtId === districtId)).map((u) => {
+  const rows = s.users.filter((u) => u.active && (u.role === 'staff' || u.role === 'coordinator' || u.role === 'head') && (!districtId || u.districtId === districtId)).map((u) => {
     const t = s.tasks.filter((x) => (x.assigneeId === u.id || x.coAssigneeIds.includes(u.id)) && ACTIVE(x));
     return { u, t, n: t.filter((x) => x.status === 'new').length, w: t.filter((x) => x.status === 'in_progress').length, r: t.filter((x) => x.status === 'review').length, o: t.filter((x) => isOverdue(x)).length };
   }).sort((a, b) => b.t.length - a.t.length);

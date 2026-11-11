@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
+import { Activity, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -14,6 +14,10 @@ import DailyPage from './pages/Daily';
 import PulsePage from './pages/Pulse';
 import CalendarPage, { EventDrawer, NewEventModal } from './pages/Calendar';
 import Home from './pages/Home';
+import PerformancePage from './pages/Performance';
+import MaterialsPage from './pages/Materials';
+import ResourcesPage from './pages/Resources';
+import PlanningPage from './pages/Planning';
 import ImportPage from './pages/Import';
 import { ProfilePage, SettingsPage } from './pages/Profile';
 import ReportsPage from './pages/Reports';
@@ -28,9 +32,11 @@ import { Onboarding } from './ui/onboarding';
 import { ThemeToggle, useTheme } from './ui/appearance';
 import MeetingsPage from './pages/Meetings';
 import { CommunicationsRoot, MessagesButton } from './ui/Communications';
+import { WorkspaceNavigation, NavigationSectionsMenu } from './ui/WorkspaceNavigation';
 
 const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: boolean }[] = [
   { id: 'home', label: 'Главная', icon: HomeIcon },
+  { id: 'performance', label: 'Успеваемость', icon: ListChecks },
   { id: 'pulse', label: 'Пульс области', icon: Activity, staffOnly: true },
   { id: 'tasks', label: 'Задачи', icon: CheckSquare },
   { id: 'calendar', label: 'Календарь', icon: CalendarDays },
@@ -40,6 +46,10 @@ const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: b
   { id: 'media', label: 'Медиа', icon: Megaphone },
   { id: 'daily', label: 'Отчёт дня', icon: ClipboardCheck, staffOnly: true },
   { id: 'meetings', label: 'Видеовстречи', icon: Video },
+  { id: 'planning', label: 'Планёрки', icon: FileText },
+  { id: 'materials', label: 'Материалы', icon: FolderOpen },
+  { id: 'headquarters', label: 'Бронь штаба', icon: Building2 },
+  { id: 'equipment', label: 'Оборудование', icon: Package },
 ];
 
 export default function App() {
@@ -99,6 +109,11 @@ function Workspace() {
     case 'settings': content = <SettingsPage />; break;
     case 'import': content = <ImportPage />; break;
     case 'meetings': content = <MeetingsPage route={route} />; break;
+    case 'performance': content = <PerformancePage />; break;
+    case 'planning': content = <PlanningPage route={route} />; break;
+    case 'materials': content = <MaterialsPage route={route} />; break;
+    case 'headquarters': content = <ResourcesPage kind="room" />; break;
+    case 'equipment': content = <ResourcesPage kind="equipment" />; break;
     case 'messages': content = null; break;
     default: content = <Home />;
   }
@@ -115,13 +130,7 @@ function Workspace() {
           <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-controls="workspace-navigation" aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>{collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}</button>
         </div>
         <span className="nav-caption">Рабочее пространство</span>
-        {NAV.map((n) => (
-          <a key={n.id} href={`#/${n.id}`} className={`nav-item ${page === n.id ? 'active' : ''}`} aria-current={page === n.id ? 'page' : undefined} aria-label={n.label} title={collapsed ? n.label : undefined}>
-            <n.icon size={19} strokeWidth={1.8} /><span className="nav-label">{n.label}</span>
-            {n.id === 'daily' && dailyMissing && <span className="count" title="Отчёт за сегодня ещё не сдан">1</span>}
-            {n.id === 'tasks' && reviewCount + myOverdue > 0 && <span className="count" title="На проверке у вас и ваши просрочки">{reviewCount + myOverdue}</span>}
-          </a>
-        ))}
+        <WorkspaceNavigation items={NAV} page={page} collapsed={collapsed} dailyMissing={dailyMissing} taskCount={reviewCount + myOverdue}/>
         <div className="nav-sep" />
         <a href="#/profile" aria-label="Профиль" title={collapsed ? 'Профиль' : undefined} className={`nav-item ${page === 'profile' ? 'active' : ''}`}><UserIcon size={19} /><span className="nav-label">Профиль</span></a>
         <a href="#/settings" aria-label="Настройки" title={collapsed ? 'Настройки' : undefined} className={`nav-item ${page === 'settings' || page === 'import' ? 'active' : ''}`}><Settings size={19} /><span className="nav-label">Настройки</span></a>
@@ -134,7 +143,7 @@ function Workspace() {
       <div className="main">
         {DEMO_MODE && <div className="demo-banner no-print"><FlaskConical size={14} /><span className="demo-long">Деморежим: вымышленные данные хранятся только в этом браузере. Роль можно переключить в меню профиля.</span><span className="demo-short">Деморежим · данные только в этом браузере</span></div>}
         <header className="topbar">
-          <div className="section-heading hide-sm"><span>Рабочее пространство</span><b>{NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'messages' ? 'Сообщения' : page === 'profile' ? 'Профиль' : 'Настройки')}</b></div>
+          <div className="section-heading hide-sm"><span>Координаторы и штаб</span><b>{NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'messages' ? 'Сообщения' : page === 'profile' ? 'Профиль' : 'Настройки')}</b></div>
           <img className="brand-logo-sm mobile-only" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди" />
           <button className="search-btn" onClick={() => setSearchOpen(true)} aria-label="Поиск по людям, задачам и округам">
             <Search size={17} /><span className="grow" style={{ textAlign: 'left' }}>Найти человека, задачу, округ</span><span className="kbd">Ctrl K</span>
@@ -153,15 +162,15 @@ function Workspace() {
         {NAV.filter((n) => ['home', 'tasks', 'calendar', 'team'].includes(n.id)).map((n) => (
           <button key={n.id} className={page === n.id ? 'active' : ''} onClick={() => go(`/${n.id}`)} aria-current={page === n.id ? 'page' : undefined}><n.icon size={21} />{n.label}</button>
         ))}
-        <button className={['pulse', 'daily', 'reports', 'analytics', 'media', 'meetings', 'profile', 'settings'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
+        <button className={!['home','tasks','calendar','team'].includes(page) ? 'active' : ''} onClick={() => setMoreOpen(true)}><Menu size={21} />Ещё</button>
       </nav>
       {P.canCreateTask(me) && <button className="fab" aria-label="Новая задача" onClick={() => openNewTask()}><Plus size={26} /></button>}
 
       <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="Разделы">
         <div className="col" style={{ gap: 4 }}>
-          {[...(me.role !== 'member' ? [{ id: 'pulse', label: 'Пульс области', icon: Activity }, { id: 'daily', label: 'Отчёт дня', icon: ClipboardCheck }] : []), { id: 'reports', label: 'Отчёты', icon: FileText }, { id: 'analytics', label: 'Аналитика и рейтинг', icon: BarChart3 }, { id: 'media', label: 'Медиа: Пиши-Делись и группы', icon: Megaphone }, { id: 'meetings', label: 'Видеовстречи', icon: Video }, { id: 'profile', label: 'Профиль', icon: UserIcon }, { id: 'settings', label: 'Настройки и импорт', icon: Settings }].map((n) => (
-            <button key={n.id} className="menu-item" style={{ minHeight: 48, borderRadius: 10 }} onClick={() => { setMoreOpen(false); go(`/${n.id}`); }}><n.icon size={20} />{n.label}</button>
-          ))}
+          <NavigationSectionsMenu items={NAV} onPick={id => { setMoreOpen(false); go('/' + id); }}/>
+          <div className="nav-sep"/>
+          {[{id:'profile',label:'Профиль',icon:UserIcon},{id:'settings',label:'Настройки и импорт',icon:Settings}].map(n => <button type="button" key={n.id} className="menu-item" onClick={() => { setMoreOpen(false); go('/' + n.id); }}><n.icon size={19}/>{n.label}</button>)}
         </div>
       </Modal>
 

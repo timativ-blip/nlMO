@@ -98,10 +98,14 @@ export function Avatar({ user, size = 32 }: { user?: User | null; size?: number 
 /* ───────── Модалка и панель ───────── */
 function useDialog(open: boolean, onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     const t = setTimeout(() => {
+      // Do not steal focus from someone who already started typing in the dialog.
+      if (ref.current?.contains(document.activeElement)) return;
       const el = ref.current?.querySelector<HTMLElement>('[autofocus], input:not([type=hidden]), textarea, select, button.btn-primary') ?? ref.current;
       el?.focus();
     }, 30);
@@ -109,7 +113,7 @@ function useDialog(open: boolean, onClose: () => void) {
       // Реагирует только верхнее окно (модалка поверх панели задачи)
       const stack = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
       if (stack[stack.length - 1] !== ref.current) return;
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); }
       if (e.key === 'Tab' && ref.current) {
         const f = ref.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, select, textarea, [tabindex="0"]');
         if (!f.length) return;

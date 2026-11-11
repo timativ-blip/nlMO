@@ -111,3 +111,13 @@ test('deadline covers a response whose headers arrived but whose body never fini
   await assert.rejects(app.withDeadline(async () => { const response={json:()=>new Promise(()=>{})}; return response.json(); },5,'body timeout'),{name:'RequestTimeoutError',message:'body timeout'});
   assert.equal(await app.withDeadline(async()=>42,5,'unused'),42);
 });
+
+
+test('legacy participant profiles cannot enter the leadership workspace and retain an explanatory recovery state', async () => {
+ const app=await start({signedIn:true,role:'member'});
+ assert.equal(app.getPhase().phase,'error');assert.match(app.getPhase().error,/координаторам, заместителям/);
+});
+test('a visible pending profile waits for approval instead of opening the workspace', async () => {
+ const app=await start({signedIn:true,role:'coordinator',active:false,pending:true});
+ assert.equal(app.getPhase().phase,'pending');
+});
