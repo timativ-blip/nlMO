@@ -10,7 +10,7 @@ export interface PdData {
   updated: string;
   workbookUrl?: string;
   sourceStatus?: 'ok' | 'stale';
-  roster?: { source: 'authors'; members: number[]; declared: Record<string, number>; contacts: Record<string, string> };
+  roster?: { source: 'authors'; members: number[]; declared: Record<string, number>; contacts: Record<string, string>; aliases?: Record<string, number[]> };
 }
 
 export function isPdTimeline(value: unknown): value is PdData {
@@ -65,7 +65,7 @@ function postDate(value: string) {
 /** A: district/contact, B: declared size, D: current membership. Notes never add people. */
 export function buildAuthorRoster(text: string): PdData {
   const groups: PdData['groups'] = [], people: PdData['people'] = [];
-  const roster: NonNullable<PdData['roster']> = { source: 'authors', members: [], declared: {}, contacts: {} };
+  const roster: NonNullable<PdData['roster']> = { source: 'authors', members: [], declared: {}, contacts: {}, aliases: {} };
   let group = '';
   const seen = new Set<string>();
   for (const row of parseCsv(text.replace(/^\uFEFF/, ''))) {
@@ -85,7 +85,16 @@ export function buildAuthorRoster(text: string): PdData {
     const key = group + ':' + normal(name);
     if (seen.has(key)) continue;
     seen.add(key);
-    roster.members.push(people.push([name, group]) - 1);
+    const index = people.push([name, group]) - 1;
+    roster.members.push(index);
+    // E: explicit source FIO aliases, one per line. F: optional exact channel names.
+    const aliases = (row[4] ?? '').split(/[\r\n;]+/).map(normal).filter(Boolean);
+    const channels = (row[5] ?? '').split(/[\r\n]+/).map(normal).filter(Boolean);
+    for (const alias of aliases) for (const channel of channels.length ? channels : ['']) {
+      const aliasKey = alias + (channel ? '\n' + channel : '');
+      const matches = roster.aliases![aliasKey] ??= [];
+      if (!matches.includes(index)) matches.push(index);
+    }
   }
   if (!groups.length || !people.length) throw new Error('Не удалось прочитать состав из листа «Авторы».');
   return { groups, people, posts: [], roster, updated: new Date().toISOString() };
@@ -111,18 +120,21 @@ export function buildSeason(text: string, archive: PdData): PdData {
     matches.add(index); aliases.set(key, matches);
   }
   const matched = new Map<string, number>();
-  function personIndex(name: string) {
-    const key = normal(name);
-    const cached = matched.get(key);
+  function personIndex(name: string, channel: string) {
+    const key = normal(name), pairKey = key + '\n' + normal(channel);
+    const explicit = archive.roster?.aliases?.[pairKey] ?? archive.roster?.aliases?.[key];
+    const cacheKey = explicit ? pairKey : key;
+    const cached = matched.get(cacheKey);
     if (cached !== undefined) return cached;
-    const alias = aliases.get(key);
-    let index = alias?.size === 1 ? [...alias][0] : -1;
-    if (index < 0) {
+    const scoped = Object.keys(archive.roster?.aliases ?? {}).some(k => k.startsWith(key + '\n'));
+    const alias = scoped && !explicit ? undefined : aliases.get(key);
+    let index = explicit ? (explicit.length === 1 ? explicit[0] : -1) : alias?.size === 1 ? [...alias][0] : -1;
+    if (index < 0 && !explicit) {
       const exact = people.map((person, i) => ({ key: normal(person[0]), i }))
         .filter(p => p.key === key || p.key.split(' ').slice(0, 2).reverse().join(' ') === key);
       if (exact.length === 1) index = exact[0].i;
     }
-    if (index < 0) {
+    if (index < 0 && !explicit) {
       const words = key.split(' ');
       const candidates = people.map((person, i) => ({ words: normal(person[0]).split(' '), i }))
         .filter((person) => words.length === 2 && words[1].length === 1 && (
@@ -132,7 +144,7 @@ export function buildSeason(text: string, archive: PdData): PdData {
       if (candidates.length === 1) index = candidates[0].i;
     }
     if (index < 0) index = people.push([name.trim(), 'none']) - 1;
-    matched.set(key, index);
+    matched.set(cacheKey, index);
     return index;
   }
   const posts: Post[] = [], seen = new Set<string>();
@@ -147,7 +159,7 @@ export function buildSeason(text: string, archive: PdData): PdData {
     const source = value(row, 'Источник').trim().toLowerCase() as Src;
     posts.push([
       day, value(row, 'Заголовок'), value(row, 'Канал/группа'), sources.includes(source) ? source : 'other',
-      personIndex(name), number(value(row, 'Очки')), number(value(row, 'Вклад в регион')),
+      personIndex(name, value(row, 'Канал/группа')), number(value(row, 'Очки')), number(value(row, 'Вклад в регион')),
       number(value(row, 'Просмотры')), number(value(row, 'Лайки')), number(value(row, 'Комментарии')),
       number(value(row, 'Репосты')), number(value(row, 'В избранное')), /^https?:\/\//i.test(rawUrl) ? rawUrl : '',
       normal(value(row, 'Критерии')) === 'выполнены' ? 1 : 0, value(row, 'Невыполненные критерии'),
