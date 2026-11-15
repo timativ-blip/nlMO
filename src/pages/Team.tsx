@@ -87,15 +87,34 @@ function Districts() {
   const directory = useDistrictDirectory();
   const L = useLookup();
   const period = usePeriod();
+  const [query, setQuery] = useState('');
+  const [state, setState] = useState('all');
   const rows = useMemo(() => rateDistricts(s, period.from, period.to), [s, period]);
+  const overdueDistricts = new Set(s.tasks.filter(t => isOverdue(t)).map(t => t.districtId));
+  const statusOf = (row: (typeof rows)[number]) => {
+    if (overdueDistricts.has(row.districtId)) return 'attention';
+    if (!row.assigned.length) return 'empty';
+    return row.plan >= 1 ? 'complete' : 'progress';
+  };
+  const labels: Record<string, string> = { attention: 'Есть просрочки', progress: 'В работе', complete: 'План выполнен', empty: 'Нет задач на период' };
+  const filtered = rows.filter(row => {
+    const d = L.districts.get(row.districtId);
+    return (state === 'all' || statusOf(row) === state) && (!query.trim() || `${d?.num} ${d?.name} ${d?.cities?.join(' ')}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')));
+  });
   const lastWeek = addDays(rows.length ? s.reports.reduce((a, r) => (r.weekStart > a ? r.weekStart : a), '') : todayISO(), -7);
   return (
-    <div className="grid g-main">
+    <>
+    <div className="district-filters" role="group" aria-label="Состояние округов">
+      {[['all', 'Все округа'], ['attention', 'Требуют внимания'], ['progress', 'В работе'], ['complete', 'План выполнен'], ['empty', 'Без задач']].map(([key, label]) => <button type="button" key={key} aria-pressed={state === key} onClick={() => setState(key)}>{label}<span className="filter-total">{key === 'all' ? rows.length : rows.filter(row => statusOf(row) === key).length}</span></button>)}
+      <div className="search-input"><Search size={15}/><input className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Округ или город" aria-label="Найти округ"/></div>
+    </div>
+    <p className="small muted district-note">Просрочки показаны на сегодня, выполнение плана — за выбранный период.</p>
+    <div className="grid g-main district-register">
       <div className="card table-wrap">
-        <table className="tbl tbl-cards">
-          <thead><tr><th>Округ</th><th>Координатор</th><th className="right">Команда</th><th className="right">Активные</th><th className="right">Просрочки</th><th>План</th><th>Отчёт за прошлую неделю</th></tr></thead>
+        <table className="tbl tbl-cards district-table" aria-label="Результаты работы округов">
+          <thead><tr><th>Округ</th><th>Координатор</th><th>Состояние</th><th className="right">Команда</th><th className="right">Активные</th><th className="right">Просрочки</th><th>План</th><th>Отчёт за прошлую неделю</th></tr></thead>
           <tbody>
-            {rows.map((d) => {
+            {filtered.map((d) => {
               const dist = L.districts.get(d.districtId)!;
               const team = s.users.filter((u) => u.districtId === d.districtId && u.active).length;
               const active = s.tasks.filter((t) => t.districtId === d.districtId && ACTIVE(t)).length;
@@ -104,25 +123,28 @@ function Districts() {
               return (
                 <tr key={d.districtId} className="clickable" tabIndex={0} onClick={() => go(`/team/districts/${d.districtId}`)} onKeyDown={(e) => e.key === 'Enter' && go(`/team/districts/${d.districtId}`)}>
                   <td className="t-title"><span className="ellipsis">{L.dname(d.districtId)}</span><span className="small muted" style={{ fontWeight: 400 }}>{dist.cities?.join(', ')}</span></td>
-                  <td className="nowrap"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} /><DistrictCoordinator district={dist} registered={L.user(dist.coordinatorId)} directory={directory} /></span></td>
-                  <td className="right">{team}</td>
-                  <td className="right">{active}</td>
-                  <td className={`right ${overdue ? 'overdue-text' : ''}`}>{overdue}</td>
-                  <td style={{ minWidth: 120 }}><div className="row"><span className="num" style={{ width: 44 }}>{d.assigned.length ? pct(d.plan) : '—'}</span><div className="grow"><Bar value={d.plan} /></div></div></td>
-                  <td>{rep ? <ReportBadge status={rep.status} /> : <span className="muted">—</span>}</td>
+                  <td className="nowrap" data-label="Координатор"><span className="row"><Avatar user={L.user(dist.coordinatorId)} size={24} /><DistrictCoordinator district={dist} registered={L.user(dist.coordinatorId)} directory={directory} /></span></td>
+                  <td><span className={`district-state ${statusOf(d)}`}>{labels[statusOf(d)]}</span></td>
+                  <td className="right" data-label="Команда">{team}</td>
+                  <td className="right" data-label="Активные задачи">{active}</td>
+                  <td className={`right ${overdue ? 'overdue-text' : ''}`} data-label="Просрочки">{overdue}</td>
+                  <td style={{ minWidth: 120 }} data-label="Выполнение плана"><div className="row"><span className="num" style={{ width: 44 }}>{d.assigned.length ? pct(d.plan) : '—'}</span><div className="grow"><Bar value={d.plan} /></div></div></td>
+                  <td data-label="Отчёт за прошлую неделю">{rep ? <ReportBadge status={rep.status} /> : <span className="muted">—</span>}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        {!filtered.length && <Empty icon={MapPin} title="Округа не найдены" text="Измените запрос или выберите другое состояние." action={<Button size="sm" onClick={() => { setQuery(''); setState('all'); }}>Сбросить фильтры</Button>}/>}
       </div>
-      <div className="card">
-        <div className="card-head"><h2>Картограмма</h2></div>
+      <details className="card district-map">
+        <summary>Картограмма округов</summary>
         <div className="card-body">
           <MoMap values={Object.fromEntries(rows.map((d) => [d.districtId, d.assigned.length ? d.plan : null]))} onPick={(id) => go(`/team/districts/${id}`)} />
         </div>
-      </div>
+      </details>
     </div>
+    </>
   );
 }
 

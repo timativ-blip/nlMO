@@ -62,7 +62,7 @@ export default function Home() {
         </div>
         <div className="hq-home-counters">
           {[
-            { n: due.length, label: "На сегодня", path: "/tasks" },
+            { n: due.length, label: "На сегодня", path: "/tasks?due=today" },
             {
               n: overdue.length,
               label: "Просрочено",

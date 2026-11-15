@@ -94,14 +94,14 @@ try {
         .getPropertyValue("--bg")
         .trim(),
     ),
-    "#042831",
+    "#080b12",
   );
   await p.screenshot({
     animations: "disabled",
     path: out + "/home-dark-desktop.png",
   });
   mark(
-    "home contains only three actionable counters, focus tasks and nearest meeting in requested teal palette",
+    "home contains only three actionable counters, focus tasks and nearest meeting in the blue workspace palette",
   );
   await p
     .getByRole("button", { name: "Включить светлую тему", exact: true })
@@ -367,20 +367,20 @@ try {
   await p.setViewportSize({ width: 1440, height: 1000 });
   await p.goto(base + "/#/home");
   const sidebar = p.getByRole("complementary", { name: "Основная навигация" });
-  assert.equal(await sidebar.locator(".nav-group-heading").count(), 4);
-  const work = sidebar.getByRole("button", { name: "Работа", exact: true });
+  assert.equal(await sidebar.locator(".nav-group-heading").count(), 2);
+  const work = sidebar.getByRole("button", { name: "Округа", exact: true });
   if ((await work.getAttribute("aria-expanded")) === "true") await work.click();
   await p.reload();
   await p.getByRole("heading", { name: /Добрый день/ }).waitFor();
   assert.equal(
     await sidebar
-      .getByRole("button", { name: "Работа", exact: true })
+      .getByRole("button", { name: "Округа", exact: true })
       .getAttribute("aria-expanded"),
     "false",
   );
   assert.equal(
     await sidebar
-      .getByRole("link", { name: "Задачи", exact: true })
+      .getByRole("link", { name: "Команда", exact: true })
       .isVisible(),
     false,
   );
@@ -390,7 +390,7 @@ try {
     .waitFor();
   assert.equal(
     await sidebar
-      .getByRole("button", { name: "Контроль", exact: true })
+      .getByRole("button", { name: "Округа", exact: true })
       .getAttribute("aria-expanded"),
     "true",
   );
@@ -407,18 +407,17 @@ try {
     .getByRole("button", { name: "Развернуть меню", exact: true })
     .click();
   await p.goto(base + "/#/home");
-  for (const name of ["Контроль", "Встречи", "Штаб"]) {
+  for (const name of ["Округа", "Штаб"]) {
     const group = sidebar.getByRole("button", { name, exact: true });
     if ((await group.getAttribute("aria-expanded")) === "true")
       await group.click();
   }
-  await sidebar.getByRole("button", { name: "Работа", exact: true }).click();
   await p.screenshot({
     path: out + "/home-glass-grouped-desktop.png",
     animations: "disabled",
   });
   mark(
-    "navigation has four collapsible groups, remembers choices, opens current section and retains every route in compact mode",
+    "compact primary navigation remembers expandable sections, opens the current group and retains every route in compact mode",
   );
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
