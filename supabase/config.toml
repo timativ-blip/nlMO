@@ -9,3 +9,7 @@ verify_jwt = false
 [functions.meeting-ai]
 # Own verified JWT and editor authorization; never uses a browser-provided provider key.
 verify_jwt = false
+
+[functions.media-authors]
+# Verifies the session and current profile before forwarding to Google.
+verify_jwt = false

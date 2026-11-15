@@ -5,3 +5,9 @@ export * from '../supabase/functions/_shared/district-directory';
 export { createDistrictDirectoryHandler, parseDistrictDirectory } from '../supabase/functions/media-groups/directory';
 
 export { districtPublicationReminders } from '../supabase/functions/digest/group-reminders';
+
+export * from '../src/data/media-report';
+
+export { createMediaAuthorsHandler, validateAuthor } from '../supabase/functions/media-authors/handler';
+
+export { MEDIA_BRIDGE_URL, readMediaWorkbook, timelineFromSheets } from '../supabase/functions/_shared/media-workbook';
