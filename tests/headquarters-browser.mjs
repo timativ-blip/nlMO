@@ -101,7 +101,7 @@ try {
     path: out + "/home-dark-desktop.png",
   });
   mark(
-    "home contains only three actionable counters, focus tasks and nearest meeting in the blue workspace palette",
+    "home retains three actionable queue counters, focus tasks and nearest meeting beside the visual dashboard",
   );
   await p
     .getByRole("button", { name: "Включить светлую тему", exact: true })

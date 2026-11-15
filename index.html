@@ -11,7 +11,7 @@
       var colorTheme = preference === 'light' || preference === 'dark' ? preference : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       document.documentElement.dataset.theme = colorTheme;
       document.documentElement.style.colorScheme = colorTheme;
-      document.querySelector('meta[name="theme-color"]').setAttribute('content', colorTheme === 'dark' ? '#080b12' : '#f3f6fc');
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', colorTheme === 'dark' ? '#080b12' : '#eaf0f8');
     </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />

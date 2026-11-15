@@ -1,14 +1,15 @@
-import { ArrowDownRight, ArrowRight, ArrowUpRight, CheckCheck, Clock3, Hourglass, RotateCcw, Target, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, CheckCheck, Clock3, Hourglass, ListChecks, RotateCcw, Target, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { kpis, num, pct, rateDistricts } from '../data/calc';
 import { analyticsTasks, periodTrend, processInsights, STATUS_COLORS, taskSnapshot } from '../data/insights';
 import { useAppState } from '../data/store';
 import { STATUS_LABEL, type Task } from '../data/types';
-import { fmtDayMonth, fmtRange } from '../lib/date';
+import { fmtDayMonth, fmtRange, inRange } from '../lib/date';
 import { go } from '../lib/router';
 import { openRecords } from '../ui/global';
 import { useMe, usePeriod } from '../ui/hooks';
-import { ActivityHeatmap, AnimatedNumber, DayColumns, DonutChart, ProgressRing, Sparkline, TimelineChart } from '../ui/charts';
+import { ActivityHeatmap, AnimatedNumber, DayColumns, DonutChart, ProgressRing, Sparkline } from '../ui/charts';
+import { ComparisonColumns, SegmentGauge } from '../ui/DashboardVisuals';
 import { Avatar, Button } from '../ui/kit';
 import { HBars, useScopeDistrict } from '../ui/widgets';
 
@@ -43,21 +44,25 @@ export function InsightsOverview() {
   const cohortTotal = distribution.reduce((n,d) => n+d.tasks.length,0);
   const completion = cohortTotal ? (distribution.find((d) => d.id === 'done')?.tasks.length ?? 0)/cohortTotal : 0;
   return <div className="insights-overview">
-    <div className="overview-summary">
-      <section className="metric-headline card">
-        <div className="metric-copy"><span className="eyebrow"><span className="live-dot" />{personal ? 'Мои результаты' : 'Результаты команды'}</span>
-          <h2>{personal ? 'Выполнение задач' : 'Выполнение плана'}</h2>
-          <div className="headline-number"><AnimatedNumber value={(personal ? completion : k.plan)*100} suffix="%" /><span className="metric-period">{period.label.toLowerCase()}</span></div>
-          <p>{personal ? 'Доля выполненных задач со сроком в выбранном периоде.' : 'Подтверждённые результаты по показателям с учётом планов округов.'}</p>
-          <div className={`metric-delta ${delta >= 0 ? 'positive' : 'negative'}`}>{delta >= 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}{delta >= 0 ? '+' : ''}{delta} подтверждённых к прошлому периоду</div>
-        </div><ProgressRing value={personal ? completion : k.plan} label={personal ? 'выполнено' : 'плана'} />
+    <div className="dashboard-grid analytics-dashboard">
+      <section className="card dashboard-card dashboard-completion">
+        <div className="dashboard-card-head"><span className="dashboard-icon"><Target size={17}/></span><h2>{personal ? 'Выполнение задач' : 'Выполнение плана'}</h2></div>
+        <ProgressRing value={personal ? (cohortTotal ? completion : null) : k.facts.length ? k.plan : null} label={personal ? 'выполнено' : 'плана'}/>
+        <p className="dashboard-caption">{personal ? 'Задачи со сроком в выбранном периоде' : 'По показателям и планам округов'}</p>
+        <span className="dashboard-period">{period.label}</span>
       </section>
       <StatCard label="Подтверждено" value={k.confirmed.length} icon={CheckCheck} foot={`Было ${prev.confirmed.length} в прошлом периоде`} onClick={() => showTasks('Подтверждённые результаты', k.confirmed, 'По дате подтверждения в выбранном периоде.')} trend={trend.map((d)=>d.confirmed)} />
-      <StatCard label="Вовремя" value={k.onTimeShare === null ? null : Math.round(k.onTimeShare*100)} unit="%" icon={Clock3} foot={k.onTimeShare === null ? 'Пока нет подтверждённых результатов' : `${k.onTimeRecords.length} из ${k.confirmed.length} результатов`} onClick={() => showTasks('Результаты, сданные вовремя', k.onTimeRecords, 'Дата сдачи результата не позже срока задачи.')} />
+      <section className="card dashboard-card dashboard-timeliness">
+        <div className="dashboard-card-head"><span className="dashboard-icon"><Clock3 size={17}/></span><h2>Соблюдение сроков</h2><button type="button" className="dashboard-detail" onClick={() => showTasks('Результаты, сданные вовремя', k.onTimeRecords, 'Дата сдачи результата не позже срока задачи.')} aria-label="Открыть результаты, сданные вовремя"><ArrowUpRight size={17}/></button></div>
+        <SegmentGauge value={k.onTimeShare} label="сдано вовремя"/>
+        <p className="dashboard-caption">{k.confirmed.length ? `${k.onTimeRecords.length} из ${k.confirmed.length} результатов` : 'Оценка появится после подтверждения'}</p>
+      </section>
+      <StatCard label="На проверке" value={k.review.length} icon={ListChecks} foot="Текущая очередь, независимо от периода" onClick={() => showTasks('Текущая очередь проверки', k.review)} />
     </div>
+    <div className={`dashboard-change ${delta >= 0 ? 'positive' : 'negative'}`}>{delta >= 0 ? <ArrowUpRight size={15}/> : <ArrowDownRight size={15}/>}<b>{delta >= 0 ? '+' : ''}{delta}</b> подтверждённых результатов к прошлому периоду</div>
     <div className="analysis-grid">
       <section className="card analysis-wide"><div className="card-head"><div><span className="eyebrow">Темп работы</span><h2>От задач к результатам</h2></div><span className="chart-caption">{fmtRange(period.from, period.to)}</span></div>
-        <div className="card-body"><TimelineChart data={trend} onPick={(p)=>showTasks(`Результаты: ${fmtRange(p.from,p.to)}`, p.tasks)} /></div>
+        <div className="card-body"><ComparisonColumns data={trend} onPick={(point, series) => showTasks(`${series === 'assigned' ? 'Задачи по сроку' : 'Подтверждено'}: ${fmtRange(point.from, point.to)}`, series === 'confirmed' ? point.tasks : tasks.filter(task => task.status !== 'cancelled' && inRange(task.due, point.from, point.to)), series === 'confirmed' ? 'По дате подтверждения результата.' : 'По сроку задачи. Отменённые задачи исключены.')} /></div>
       </section>
       <section className="card"><div className="card-head"><div><span className="eyebrow">Состояние задач</span><h2>Как движется работа</h2></div></div>
         <div className="card-body"><DonutChart segments={distribution.map((d)=>({ id:d.id,label:STATUS_LABEL[d.id],value:d.tasks.length,color:STATUS_COLORS[d.id],onClick:()=>showTasks(STATUS_LABEL[d.id],d.tasks) }))} /><p className="chart-note">Задачи со сроком в выбранном периоде. Отменённые исключены.</p></div>
