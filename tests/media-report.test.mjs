@@ -40,3 +40,29 @@ test('report separates registered/ranked/writing and uses cumulative publication
 test('an empty season and baseline before Oct 1 retain roster and produce zero, not negative deltas',()=>{
  const r=buildMediaReport(season([]),'2026-10-02');assert.equal(r.all.registered,5);assert.equal(r.all.postsDelta,0);assert.equal(r.all.writingDelta,0);assert.equal(r.compareTo,'2026-09-25');
 });
+
+
+test('explicit authors-sheet aliases merge profile FIO into the named roster person only for listed channels',()=>{
+ const roster=buildAuthorRoster(csv([['128 округ',1,'','Першина Марина','Маркова О.','Марина Першина\nМарина Першина | По делу']]));
+ const cols=['Дата поста','ФИО','Источник','Очки','URL','Критерии','Канал/группа'];
+ const d=buildTimeline(roster,buildSeason(csv([cols,
+ ['2026-11-01','Маркова О.','vk',1,'https://test/m1','Выполнены','Марина Першина'],
+ ['2026-11-02','Маркова О.','tg',1,'https://test/m2','Без критериев','Марина Першина | По делу'],
+ ['2026-11-03','Маркова О.','vk',1,'https://test/m3','Выполнены','Чужой канал'],
+ ]),roster));
+ assert.deepEqual(d.posts.map(p=>d.people[p[4]][0]),['Першина Марина','Першина Марина','Маркова О.']);
+ const r=buildMediaReport(d,'2026-11-15');assert.equal(r.rows[0].posts,2);assert.equal(r.rows[0].ranked,1);assert.equal(r.rows[0].registered,1);assert.equal(r.outside.posts,1);
+});
+test('an alias used by two roster members remains unassigned',()=>{
+ const r=buildAuthorRoster(csv([['118 округ',1,'','Иванов Иван','Псевдоним И.'],['119 округ',1,'','Иванов Илья','Псевдоним И.']]));
+ const d=buildSeason(csv([headers,['2026-11-01','Псевдоним И.','vk',1,'https://test/ambiguous','Выполнены']]),r);
+ assert.equal(d.people[d.posts[0][4]][1],'none');
+});
+
+test('archive URL aliases cannot bypass an explicit channel restriction',()=>{
+ const roster=buildAuthorRoster(csv([['128 округ',1,'','Першина Марина','Маркова О.','Марина Першина']]));
+ const cols=['Дата поста','ФИО','Источник','Очки','URL','Критерии','Канал/группа'];
+ const known=buildSeason(csv([cols,['2026-09-30','Маркова О.','vk',1,'https://test/known','Выполнены','Марина Першина']]),roster);
+ const d=buildSeason(csv([cols,['2026-09-30','Маркова О.','vk',1,'https://test/known','Выполнены','Марина Першина'],['2026-11-01','Маркова О.','vk',1,'https://test/new','Выполнены','Другой человек']]),known);
+ assert.equal(d.people[d.posts[1][4]][1],'none');
+});
