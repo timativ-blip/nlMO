@@ -22,11 +22,12 @@ export function AnimatedNumber({ value, precision = 0, suffix = '' }: { value: n
   return <span aria-label={format(value)}><span aria-hidden>{format(display)}</span></span>;
 }
 
-export function ProgressRing({ value, label = 'плана' }: { value: number; label?: string }) {
+export function ProgressRing({ value, label = 'плана', suffix = '%' }: { value: number | null; label?: string; suffix?: string }) {
   const length = 2 * Math.PI * 46;
-  return <div className="progress-ring" role="img" aria-label={`${Math.round(value * 100)}% ${label}`}>
-    <svg viewBox="0 0 112 112" aria-hidden><circle className="ring-track" cx="56" cy="56" r="46" /><circle className="ring-value" cx="56" cy="56" r="46" strokeDasharray={length} strokeDashoffset={length * (1 - Math.min(1, Math.max(0, value)))} /></svg>
-    <span><b><AnimatedNumber value={value * 100} suffix="%" /></b><small>{label}</small></span>
+  const valid = value !== null && Number.isFinite(value) ? value : null;
+  return <div className="progress-ring" role="img" aria-label={valid === null ? `${label}: нет данных` : `${Math.round(valid * 100)}${suffix} ${label}`}>
+    <svg viewBox="0 0 112 112" aria-hidden><circle className="ring-track" cx="56" cy="56" r="46" />{valid !== null && valid > 0 && <circle className="ring-value" cx="56" cy="56" r="46" strokeDasharray={length} strokeDashoffset={length * (1 - Math.min(1, Math.max(0, valid)))} />}</svg>
+    <span><b>{valid === null ? '—' : <AnimatedNumber value={valid * 100} suffix={suffix} />}</b><small>{label}</small></span>
   </div>;
 }
 

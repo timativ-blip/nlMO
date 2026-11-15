@@ -7,6 +7,7 @@ import { go } from "../lib/router";
 import { openRecords } from "../ui/global";
 import { useMe, usePeriod } from "../ui/hooks";
 import { Avatar, Button } from "../ui/kit";
+import { ProgressRing } from "../ui/charts";
 import { ContextBar, useScopeDistrict } from "../ui/widgets";
 const percent = (n: number | null) =>
   n === null ? "—" : Math.round(n * 100) + "%";
@@ -63,10 +64,7 @@ export default function PerformancePage() {
                     {roleLabel(person)} · {person.districtId} округ
                   </p>
                 </div>
-                <strong className="performance-score">
-                  {r.score === null ? "—" : r.score}
-                  <small>{r.score === null ? "Мало данных" : "из 100"}</small>
-                </strong>
+                <div className="performance-score"><ProgressRing value={r.score === null ? null : r.score / 100} suffix="" label={r.score === null ? "мало данных" : "из 100"}/></div>
               </div>
               <div className="performance-measures">
                 <button
