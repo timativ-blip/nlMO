@@ -32,10 +32,10 @@ import { Onboarding } from './ui/onboarding';
 import { ThemeToggle, useTheme } from './ui/appearance';
 import MeetingsPage from './pages/Meetings';
 import { CommunicationsRoot, MessagesButton } from './ui/Communications';
-import { WorkspaceNavigation, NavigationSectionsMenu } from './ui/WorkspaceNavigation';
+import { WorkspaceNavigation, WorkspaceSections, workspaceSection, NavigationSectionsMenu } from './ui/WorkspaceNavigation';
 
 const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: boolean }[] = [
-  { id: 'home', label: 'Главная', icon: HomeIcon },
+  { id: 'home', label: 'Обзор', icon: HomeIcon },
   { id: 'performance', label: 'Успеваемость', icon: ListChecks },
   { id: 'pulse', label: 'Пульс области', icon: Activity, staffOnly: true },
   { id: 'tasks', label: 'Задачи', icon: CheckSquare },
@@ -129,8 +129,7 @@ function Workspace() {
           </div>
           <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-controls="workspace-navigation" aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>{collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}</button>
         </div>
-        <span className="nav-caption">Рабочее пространство</span>
-        <WorkspaceNavigation items={NAV} page={page} collapsed={collapsed} dailyMissing={dailyMissing} taskCount={reviewCount + myOverdue}/>
+        <WorkspaceNavigation items={NAV} page={page} collapsed={collapsed} dailyMissing={dailyMissing} taskCount={reviewCount + myOverdue} onSearch={() => setSearchOpen(true)}/>
         <div className="nav-sep" />
         <a href="#/profile" aria-label="Профиль" title={collapsed ? 'Профиль' : undefined} className={`nav-item ${page === 'profile' ? 'active' : ''}`}><UserIcon size={19} /><span className="nav-label">Профиль</span></a>
         <a href="#/settings" aria-label="Настройки" title={collapsed ? 'Настройки' : undefined} className={`nav-item ${page === 'settings' || page === 'import' ? 'active' : ''}`}><Settings size={19} /><span className="nav-label">Настройки</span></a>
@@ -143,9 +142,9 @@ function Workspace() {
       <div className="main">
         {DEMO_MODE && <div className="demo-banner no-print"><FlaskConical size={14} /><span className="demo-long">Деморежим: вымышленные данные хранятся только в этом браузере. Роль можно переключить в меню профиля.</span><span className="demo-short">Деморежим · данные только в этом браузере</span></div>}
         <header className="topbar">
-          <div className="section-heading hide-sm"><span>Координаторы и штаб</span><b>{NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'messages' ? 'Сообщения' : page === 'profile' ? 'Профиль' : 'Настройки')}</b></div>
+          <div className="section-heading hide-sm"><span>Московская область</span><span className="section-slash" aria-hidden>/</span><b>{workspaceSection(page)?.label ?? (NAV_ALL.find((n) => n.id === page)?.label ?? (page === 'messages' ? 'Сообщения' : page === 'profile' ? 'Профиль' : 'Настройки'))}</b></div>
           <img className="brand-logo-sm mobile-only" src={`${import.meta.env.BASE_URL}logo-${theme === 'dark' ? 'light' : 'dark'}.png`} alt="Новые люди" />
-          <button className="search-btn" onClick={() => setSearchOpen(true)} aria-label="Поиск по людям, задачам и округам">
+          <button className="search-btn mobile-only" onClick={() => setSearchOpen(true)} aria-label="Поиск по людям, задачам и округам">
             <Search size={17} /><span className="grow" style={{ textAlign: 'left' }}>Найти человека, задачу, округ</span><span className="kbd">Ctrl K</span>
           </button>
           <span className="spacer hide-sm" />
@@ -155,7 +154,7 @@ function Workspace() {
           <Notifications />
           <ProfileMenu />
         </header>
-        <main id="main" className="content" tabIndex={-1}><div className="page-enter" key={page}>{content}</div></main>
+        <main id="main" className="content" tabIndex={-1}><WorkspaceSections items={NAV} page={page}/><div className="page-enter" key={page}>{content}</div></main>
       </div>
 
       <nav className="bottom-nav" aria-label="Навигация">

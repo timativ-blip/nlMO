@@ -31,7 +31,7 @@ export default function TasksPage({ route }: { route: Route }) {
   // Фильтры из ссылок (например, с главной: ?overdue=1)
   useEffect(() => {
     const q = route.query;
-    if ([...q.keys()].length) setF({ ...EMPTY, mine: q.get('mine') === '1', overdue: q.get('overdue') === '1', status: q.get('status') ?? (q.get('overdue') ? '' : 'active'), district: q.get('district') ?? '', assignee: q.get('assignee') ?? '' });
+    if ([...q.keys()].length) setF({ ...EMPTY, mine: q.get('mine') === '1', overdue: q.get('overdue') === '1', status: q.get('status') ?? (q.get('overdue') ? '' : 'active'), district: q.get('district') ?? '', assignee: q.get('assignee') ?? '', due: ['today', 'week', 'next'].includes(q.get('due') ?? '') ? q.get('due') as DueFilter : '' });
   }, [route.query.toString()]); // eslint-disable-line
   useEffect(() => { if (route.parts[1]) openTask(route.parts[1]); }, [route.parts[1]]);
 
