@@ -968,3 +968,76 @@ body::before {
   .insights-overview .comparison-plot { min-height: 195px; }.comparison-legend { font-size: 9px; }.performance-card { padding: 18px; }.performance-measures { padding: 12px; }
 }
 @media (prefers-reduced-transparency: reduce) { body::before { display: none; } }
+
+/* Season reports retain a solid, readable table in both themes. */
+.media-season-report { display: grid; gap: 22px; }
+.media-report-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+.media-report-controls h2, .media-report-sheet h2, .media-report-list-head h2 { margin: 8px 0; font-size: 22px; }
+.media-report-controls p, .media-report-sheet-head p, .media-report-list-head p { margin: 6px 0 0; }
+.media-report-dates { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.media-report-dates label { display: grid; gap: 7px; font-size: 12px; color: var(--muted); }
+.media-report-dates .input { width: 170px; color: var(--text); }
+.media-report-overview { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
+.media-report-overview .card { display: grid; gap: 10px; }
+.media-report-overview strong { font-size: 36px; letter-spacing: -.04em; }
+.media-report-sheet.card { padding: 0; overflow: hidden; }
+.media-report-sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; padding: 24px; }
+.media-report-sheet .table-wrap { border-top: 1px solid var(--border); }
+.media-report-table { width: 100%; min-width: 720px; table-layout: fixed; }
+.media-report-table th, .media-report-table td { text-align: center; vertical-align: middle; white-space: normal; padding: 15px 12px; }
+.media-report-table thead th { color: var(--text); background: var(--surface2); font-size: 12px; }
+.media-report-table th:first-child { width: 155px; text-align: left; }
+.media-report-table td { font-variant-numeric: tabular-nums; }
+.media-report-table .media-report-writing { background: color-mix(in srgb, #31bdb6 16%, var(--surface)); color: var(--text); }
+.media-report-table .media-report-total th, .media-report-table .media-report-total td { background: var(--surface2); font-weight: 700; border-top: 2px solid var(--border); }
+.media-report-table small, .media-report-roster small { display: block; font-size: 11px; margin-top: 4px; }
+.media-report-delta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.media-report-district { padding: 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; text-align: inherit; }
+.media-report-district:hover { text-decoration: underline; }
+.media-report-footnote { padding: 10px 24px 18px; font-size: 12px; line-height: 1.7; }
+.media-report-list-head { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.media-report-list-head .search-input { max-width: 260px; }
+.media-report-roster.card { padding: 0; }
+.media-report-roster summary { padding: 20px 24px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.media-report-roster summary > span:first-child { display: grid; gap: 5px; }
+.media-report-roster summary::after { content: '+'; font-size: 20px; color: var(--muted); }
+.media-report-roster[open] summary::after { content: '−'; }
+.media-report-roster ul { list-style: none; padding: 0 24px 12px; margin: 0; }
+.media-report-roster li { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+.media-report-roster li > .num { text-align: right; }
+@media(max-width: 900px) { .media-report-overview { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width: 600px) {
+  .media-season-report { gap: 16px; }
+  .media-report-controls, .media-report-sheet-head { padding: 18px; }
+  .media-report-dates { width: 100%; }
+  .media-report-dates label { flex: 1; min-width: 125px; }
+  .media-report-dates .input { width: 100%; }
+  .media-report-overview { gap: 10px; }
+  .media-report-overview .card { padding: 16px; }
+  .media-report-overview strong { font-size: 30px; }
+  .media-report-roster summary { padding: 18px; flex-wrap: wrap; }
+  .media-report-roster ul { padding: 0 18px 12px; }
+  .media-report-footnote { padding: 10px 18px 16px; }
+  .media-report-list-head .row { width: 100%; }
+  .media-report-list-head .select, .media-report-list-head .search-input { width: 100%; max-width: none; }
+}
+
+/* Shared alignment: titles, controls and table rows share a consistent baseline. */
+.page-head h1, .card-head h2, .modal-head h2, .drawer-head h2 { margin: 0; line-height: 1.25; }
+.page-head .sub, .field-label, .eyebrow { line-height: 1.5; }
+.card-head, .modal-head, .drawer-head { align-items: center; }
+.btn { align-items: center; justify-content: center; line-height: 1.35; text-align: center; }
+.btn > svg { flex-shrink: 0; vertical-align: middle; }
+.tbl th, .tbl td { vertical-align: middle; line-height: 1.5; }
+.media-report-overview .card { grid-template-rows: minmax(30px,auto) auto minmax(30px,auto); align-content: start; }
+.media-report-roster summary > .small { margin-left: auto; text-align: right; }
+.media-report-roster summary::after { flex-shrink: 0; width: 16px; text-align: center; }
+.media-report-table .media-report-delta { display: inline-block; }
+.media-report-controls > .danger-text { flex-basis: 100%; color: var(--danger); }
+.media-report-controls { padding: 24px; }
+.media-report-overview .card { padding: 20px; min-width: 0; }
+.media-report-table tbody th { font-size: 13px; font-weight: 500; }
+@media(max-width:600px) {
+  .media-report-controls { padding: 18px; }
+  .media-report-overview .card { padding: 16px; }
+}

@@ -2,7 +2,7 @@
 import { MONTHS_NOM } from '../lib/date';
 import { isPdTimeline } from '../../supabase/functions/_shared/media-timeline';
 import type { PdData } from './media-types';
-export { MEDIA_SEASONS, SEASON_11_URL, parseCsv, buildSeason, buildTimeline } from '../../supabase/functions/_shared/media-timeline';
+export { MEDIA_SEASONS, SEASON_11, SEASON_11_URL, AUTHORS_URL, ARCHIVE_URL, parseCsv, buildAuthorRoster, buildSeason, buildTimeline } from '../../supabase/functions/_shared/media-timeline';
 
 export function mediaMonths(data: PdData) {
   return [...new Set([...data.posts.map((p) => p[0].slice(0, 7)), ...Object.keys(data.seasons ?? {})])].sort();

@@ -9,6 +9,7 @@ import { MONTHS_NOM, plural } from '../lib/date';
 import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
 import { MoMap } from '../ui/widgets';
 import BriefsView from './Briefs';
+import MediaReport from './MediaReport';
 import { DEMO_MODE, getState, useAppState } from '../data/store';
 import { applyMediaMatches } from '../data/media-matches';
 import { MediaAssignments, MediaMatchForm } from './MediaAssignments';
@@ -53,13 +54,15 @@ export function useJson<T>(name: string, everyMs: number) {
           if (result.error) throw new Error(result.error);
           return result;
         }, 20000, 'Не удалось дождаться данных медиа.');
-        if (alive) { setData(d as T); setError(name === 'media-pd' && (d as PdData).sourceStatus === 'stale'); }
+        if (alive) { setData(previous => name === 'media-pd' && previous && (previous as unknown as PdData).updated > (d as PdData).updated ? previous : d as T); setError(name === 'media-pd' && (d as PdData).sourceStatus === 'stale'); }
       } catch { if (alive) setError(true); }
       finally { loading = false; }
     };
+    const authorChanged = (event: Event) => { if (alive && name === 'media-pd') { setData((event as CustomEvent<PdData>).detail as T); setError(false); } };
+    window.addEventListener('media-authors-changed', authorChanged);
     load();
     const t = setInterval(load, everyMs);
-    return () => { alive = false; clearInterval(t); };
+    return () => { alive = false; clearInterval(t); window.removeEventListener('media-authors-changed', authorChanged); };
   }, [name, everyMs]);
   const resolved = useMemo(() => name === 'media-pd' && data ? applyMediaMatches(data as unknown as PdData, state.mediaMatches ?? [], state.users) as T : data, [name, data, state.mediaMatches, state.users]);
   return { data: resolved, error };
@@ -96,9 +99,9 @@ type Calc = ReturnType<typeof compute>;
 
 const SrcIcon = ({ s }: { s: Src }) => <span className={`src-ic src-${s}`} title={SRC_LABEL[s]}>{s === 'vk' ? 'VK' : s === 'tg' ? 'TG' : s === 'youtube' ? 'YT' : s === 'tiktok' ? 'TT' : s === 'instagram' ? 'IG' : '•'}</span>;
 
-type View = 'brief' | 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
+type View = 'report' | 'brief' | 'dash' | 'okr' | 'aut' | 'loose' | 'idle' | 'groups';
 export default function MediaPage({ route }: { route: Route }) {
-  const view = (route.parts[1] as View) || 'dash';
+  const view = (route.parts[1] as View) || 'report';
   const pd = useJson<PdData>('media-pd', 60000);
   const months = useMemo(() => (pd.data ? mediaMonths(pd.data) : []), [pd.data]);
   const [selectedMonth, setMonth] = useState('');
@@ -113,7 +116,7 @@ export default function MediaPage({ route }: { route: Route }) {
     <>
       <div className="page-head">
         <div className="grow"><h1>Медиа</h1><div className="sub">«Пиши-Делись» по округам 118–129 и активность партийных групп</div></div>
-        {view !== 'groups' && view !== 'brief' && month && (
+        {view !== 'report' && view !== 'groups' && view !== 'brief' && month && (
           <div className="month-switch">
             <Button size="sm" iconOnly icon={ChevronLeft} aria-label="Предыдущий месяц" disabled={mi <= 0} onClick={() => setMonth(months[mi - 1])} />
             <span className="pill" aria-live="polite">{pd.data && mediaSeasonTitle(pd.data, month)}</span>
@@ -122,13 +125,14 @@ export default function MediaPage({ route }: { route: Route }) {
         )}
         <Button size="sm" icon={Info} onClick={() => open('about', '')}>О рейтинге</Button>
       </div>
-      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'brief', label: 'Что публикуем' }, { value: 'dash', label: 'Дашборд' }, { value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
+      <Tabs value={view} onChange={(v) => go(`/media/${v}`)} tabs={[{ value: 'report', label: 'Отчёт сезона' }, { value: 'brief', label: 'Что публикуем' }, { value: 'dash', label: 'Дашборд' }, { value: 'okr', label: 'Округа' }, { value: 'aut', label: 'Авторы' }, { value: 'loose', label: 'Без округа' }, { value: 'idle', label: 'Не пишут' }, { value: 'groups', label: 'Группы ВК и ТГ' }]} />
       {view === 'brief' ? <BriefsView /> : view === 'groups' ? <GroupsView pd={pd.data} /> : pd.error && !pd.data ? (
-        <div className="card"><Empty icon={Info} title="Не удалось загрузить данные «Пиши-Делись»" text="Таблица или документ со списком сейчас недоступны. Обновите страницу через пару минут." /></div>
+        <div className="card"><Empty icon={Info} title="Не удалось загрузить данные «Пиши-Делись»" text="Таблица сезона или лист «Авторы» сейчас недоступны. Обновите страницу через пару минут." /></div>
       ) : !A ? <div className="map-skel" style={{ height: 320 }} /> : (
         <>
           {pd.error && <div className="callout danger" role="status" style={{ marginBottom: 14 }}>Не удалось обновить данные. Показана последняя полученная выгрузка; повторим загрузку через минуту.</div>}
-          <Ticker A={A} month={month} />
+          {view !== 'report' && <Ticker A={A} month={month} />}
+          {view === 'report' && pd.data && <MediaReport data={pd.data} stale={pd.error} />}
           {view === 'dash' && pd.data && <DashView A={A} D={pd.data} month={month} months={months} open={open} />}
           {view === 'okr' && <OkrView A={A} open={open} />}
           {view === 'aut' && <AutView A={A} open={open} />}
@@ -216,7 +220,7 @@ function OkrView({ A, open }: { A: Calc; open: Opener }) {
       <Podium items={items.slice(0, 3)} />
       <RankRows items={items.slice(3)} start={3} />
       {extra.length > 0 && <><h2 className="sec-title">Вне рейтинга округов</h2><RankRows items={extra} /></>}
-      <p className="small muted">Нажмите на округ, чтобы увидеть авторов. Во вкладке «Без округа» можно сопоставить автора с человеком из команды или округом. Привязки из исходного документа имеют приоритет.</p>
+      <p className="small muted">Нажмите на округ, чтобы увидеть авторов. Во вкладке «Без округа» можно сопоставить автора с человеком из команды или округом. Привязки из вкладки «Авторы» имеют приоритет.</p>
     </>
   );
 }
@@ -342,7 +346,7 @@ function About() {
   return (
     <div className="col" style={{ gap: 12 }}>
       <h1 style={{ fontSize: 30 }}>О рейтинге</h1>
-      <p style={{ margin: 0 }}>Статистика «Пиши-Делись» по Московской области: рейтинг округов 118–129 и авторов. Сентябрь 2026 — 10 сезон, октябрь — 11 сезон; месяц переключается стрелками. Посты — из выгрузки «Пиши-Делись» (Google-таблица), принадлежность авторов к округам — из документа со списком. Посты с невыполненными условиями тоже идут в баллы; у таких людей стоит значок «!N». Данные обновляются каждую минуту.</p>
+      <p style={{ margin: 0 }}>Статистика «Пиши-Делись» по Московской области: рейтинг округов 118–129 и авторов. Сентябрь 2026 — 10 сезон. 11 сезон идёт с 1 октября по 20 декабря включительно. Во вкладке «Отчёт сезона» показан итог с октября; в остальных разделах месяц переключается стрелками. Посты — из выгрузки «Пиши-Делись» (Google-таблица), состав округов — из вкладки «Авторы» той же таблицы. Посты с невыполненными условиями тоже идут в баллы; у таких людей стоит значок «!N». Данные обновляются каждую минуту.</p>
       <h2>Как считаются баллы</h2>
       <div className="card table-wrap"><table className="tbl"><tbody>{f.map(([k, t, r]) => [<tr key={k}><th colSpan={2}><span className="row"><SrcIcon s={k} />{t}</span></th></tr>, ...r.map((x) => <tr key={k + x[0]}><td>{x[0]}</td><td className="right">{x[1]}</td></tr>)])}</tbody></table></div>
       <p style={{ margin: 0 }}>Затем балл умножается на коэффициент: оригинальный пост × 1.5, неоригинальный × 1.2, репост × 1.</p>
