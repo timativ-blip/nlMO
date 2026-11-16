@@ -11,3 +11,6 @@ export * from '../src/data/media-report';
 export { createMediaAuthorsHandler, validateAuthor } from '../supabase/functions/media-authors/handler';
 
 export { MEDIA_BRIDGE_URL, readMediaWorkbook, timelineFromSheets } from '../supabase/functions/_shared/media-workbook';
+
+export * from '../supabase/functions/web-push/core';
+export { createPushHandler } from '../supabase/functions/web-push/handler';

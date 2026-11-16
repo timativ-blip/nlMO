@@ -33,6 +33,12 @@ test('report separates registered/ranked/writing and uses cumulative publication
  const r=buildMediaReport(d,'2026-11-15'),g=r.rows[0];
  assert.equal(r.compareTo,'2026-11-08'); assert.deepEqual([g.registered,g.ranked,g.writing,g.posts,g.counted,g.writingDelta,g.postsDelta],[2,1,2,3,1,1,2]);
  assert.equal(r.outside.posts,1);assert.equal(r.total.posts+r.outside.posts,r.all.posts);assert.equal(r.all.posts,5);
+ assert.deepEqual([r.all.writing,r.all.ranked],[4,3]);
+ // Accepting a previously rejected post changes rating, but not whether its author writes.
+ const peter=g.authors.find(a=>a.name==='Петров Пётр').index;
+ const accepted={...d,posts:d.posts.map(p=>p[4]===peter ? Object.assign([...p],{13:1}) : p)};
+ const after=buildMediaReport(accepted,'2026-11-15');
+ assert.equal(after.all.writing,r.all.writing);assert.equal(after.all.ranked,r.all.ranked+1);
  assert.match(mediaReportText(r),/🟢 Петров Пётр — 1 пост, 0 зачтено/);assert.match(mediaReportText(r),/🔴 Попов Иван — 0/);
  assert.match(mediaReportCsv(r),/Изменение постов/);assert.match(mediaReportSvg(r),/Количество постов/);
  assert.throws(()=>buildMediaReport(d,'2026-11-15','2026-11-15'),/раньше/);

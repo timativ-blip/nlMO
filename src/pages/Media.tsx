@@ -155,7 +155,7 @@ function Ticker({ A, month }: { A: Calc; month: string }) {
   const okr = A.groups.filter((g) => g.num > 0).sort((a, b) => b.pts - a.pts)[0];
   const top = A.people.filter((a) => a.posts).sort((a, b) => b.pts - a.pts)[0];
   const roster = A.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.roster, 0);
-  const writing = A.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.mem.filter((a) => a.okPosts).length, 0);
+  const writing = A.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.authors, 0);
   const contrib = A.people.reduce((s, a) => s + a.contrib, 0);
   const items = [
     okr?.pts ? ['Лидер месяца', okr.label] : null,
@@ -270,7 +270,7 @@ function IdleView({ A, open }: { A: Calc; open: Opener }) {
   const roster = groups.reduce((s, g) => s + g.roster, 0);
   let idleAll = 0;
   const blocks = groups.map((g) => {
-    const idle = g.mem.filter((a) => !a.okPosts).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    const idle = g.mem.filter((a) => !a.posts).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     idleAll += idle.length;
     return { g, idle, shown: q ? idle.filter((a) => norm(a.name).includes(norm(q))) : idle };
   }).filter((b) => b.shown.length);
@@ -284,10 +284,10 @@ function IdleView({ A, open }: { A: Calc; open: Opener }) {
       {!blocks.length ? <div className="card"><Empty icon={Search} title={q ? 'Никого не нашли' : 'Все в списке пишут посты'} /></div> : blocks.map(({ g, idle, shown }) => (
         <div key={g.id} style={{ marginBottom: 14 }}>
           <h2 className="sec-title">{g.label} · {idle.length} из {g.roster}</h2>
-          <RankRows items={shown.map((a) => ({ key: String(a.i), name: a.name, rank: '—', zero: true, tip: tipFor(a), onClick: () => open('p', String(a.i)), sub: a.bad ? `${a.bad} ${posts_(a.bad)} без выполненных условий: ${[...a.reasons.keys()].join(', ')}` : 'нет постов в этом месяце', val: '' }))} />
+          <RankRows items={shown.map((a) => ({ key: String(a.i), name: a.name, rank: '—', zero: true, tip: tipFor(a), onClick: () => open('p', String(a.i)), sub: 'нет постов в этом месяце', val: '' }))} />
         </div>
       ))}
-      <p className="small muted">Люди из списка по округам, у которых за месяц нет ни одного поста со статусом «Выполнены». Посты с невыполненными условиями засчитываются в баллы, но человек остаётся здесь, пока у него нет ни одного засчитанного поста.</p>
+      <p className="small muted">Люди из списка по округам, у которых за выбранный месяц нет публикаций в выгрузке. Любой пост, в том числе незачтённый, учитывается в показателе «Пишут» — даже если автор не в рейтинге.</p>
     </>
   );
 }
@@ -429,7 +429,7 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
   const sum = (C: Calc) => {
     const act = C.people.filter((a) => a.posts > 0);
     const roster = C.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.roster, 0);
-    const writing = C.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.mem.filter((a) => a.okPosts).length, 0);
+    const writing = C.groups.filter((g) => g.id !== 'none').reduce((s, g) => s + g.authors, 0);
     return { posts: C.P.length, pts: act.reduce((s, a) => s + a.pts, 0), authors: act.length, views: act.reduce((s, a) => s + a.views, 0), contrib: act.reduce((s, a) => s + a.contrib, 0), writingShare: roster ? writing / roster : 0, writing, roster };
   };
   const cur = sum(A), prev = B ? sum(B) : null;
@@ -442,7 +442,7 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
   };
   const okr = A.groups.filter((g) => g.num > 0);
   const maxPts = Math.max(1, ...okr.map((g) => g.pts));
-  const shares = okr.map((g) => ({ g, w: g.mem.filter((a) => a.okPosts).length, share: g.roster ? g.mem.filter((a) => a.okPosts).length / g.roster : 0 })).sort((a, b) => b.share - a.share);
+  const shares = okr.map((g) => ({ g, w: g.authors, share: g.roster ? g.authors / g.roster : 0 })).sort((a, b) => b.share - a.share);
   // по дням
   const [y, mo] = month.split('-').map(Number);
   const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
@@ -465,7 +465,7 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
         <Tile label="Посты" value={fmt(cur.posts)} foot={delta(cur.posts, prev?.posts)} />
         <Tile label="Баллы" value={fmt(cur.pts)} foot={delta(cur.pts, prev?.pts)} />
         <Tile label="Авторы с постами" value={fmt(cur.authors)} foot={delta(cur.authors, prev?.authors)} />
-        <Tile label="Пишут из списка" value={`${Math.round(cur.writingShare * 100)}%`} foot={`${cur.writing} из ${cur.roster} человек`} />
+        <Tile label="Пишут из списка" value={`${Math.round(cur.writingShare * 100)}%`} foot={`${cur.writing} из ${cur.roster} человек · включая вне рейтинга`} />
         <Tile label="Просмотры" value={fmt(cur.views)} foot={delta(cur.views, prev?.views)} />
         <Tile label="Вклад в рейтинг региона" value={fmt(cur.contrib)} foot={delta(cur.contrib, prev?.contrib)} />
       </div>

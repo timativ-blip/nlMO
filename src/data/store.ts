@@ -1,3 +1,4 @@
+import { disablePush } from '../lib/push';
 // Хранилище приложения: состояние в памяти, подписка через useSyncExternalStore.
 // Каждое действие проверяет права (см. perm.ts), пишет историю и уведомления.
 // Демо: данные в localStorage. Рабочий режим (заданы VITE_SUPABASE_*): изменения отправляются
@@ -286,7 +287,7 @@ export async function signIn(email: string, password: string) {
   const { error } = await sb!.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
   if (error) throw new AppError(/invalid/i.test(error.message) ? 'Неверная почта или пароль. Если забыли пароль — попросите руководителя или координатора сбросить его.' : B.humanError(error.message));
 }
-export const signOut = () => sb!.auth.signOut({ scope: 'local' });
+export const signOut = async () => { await disablePush().catch(() => {}); return sb!.auth.signOut({ scope: 'local' }); };
 export async function register(profile: Partial<User>, kind: 'hq' | 'okrug', password: string) {
   if (!profile.name || profile.name.trim().split(/\s+/).length < 2) throw new AppError('Укажите имя и фамилию.');
   if (!profile.email || !/^\S+@\S+\.\S+$/.test(profile.email)) throw new AppError('Укажите почту — это ваш логин.');

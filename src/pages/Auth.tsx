@@ -6,9 +6,9 @@ import { bootstrapHead, register, restartSignIn, signIn, signOut, usePhase } fro
 import { OKRUGS } from '../data/okrugs';
 import { Button, Field, Input, run, Segmented, Select } from '../ui/kit';
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, loading = false }: { children: React.ReactNode; loading?: boolean }) {
   return (
-    <div className="auth-wrap">
+    <div className={`auth-wrap${loading ? ' auth-loading' : ''}`}>
       <div className="auth-theme"><ThemeToggle /></div>
       <div className="auth-side" aria-hidden>
         <div className="brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}logo-light.png`} alt="Новые люди · Московская область" /><div className="brand-name">Командный центр</div></div>
@@ -19,10 +19,17 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AuthGate({ preview = false }: { preview?: boolean }) {
+export default function AuthGate({ preview = false }: { preview?: boolean | 'loading' }) {
   const current = usePhase();
-  const { phase, error } = preview ? { phase: 'signed-out', error: '' } : current;
-  if (phase === 'loading') return <Shell><div className="auth-card"><div className="spinner" /><p className="muted">Загружаю данные команды…</p></div></Shell>;
+  const { phase, error } = preview ? { phase: preview === 'loading' ? 'loading' : 'signed-out', error: '' } : current;
+  if (phase === 'loading') return <Shell loading>
+    <div className="auth-card auth-loading-card" role="status" aria-live="polite" aria-busy="true">
+      <span className="auth-loading-label">Командный центр · Московская область</span>
+      <div className="auth-loading-indicator" aria-hidden="true"><div className="spinner" /></div>
+      <h2>Открываем рабочий кабинет</h2>
+      <p className="muted">Загружаем данные команды…</p>
+    </div>
+  </Shell>;
   if (phase === 'error')
     return (
       <Shell>
