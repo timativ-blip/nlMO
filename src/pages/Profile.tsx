@@ -1,3 +1,4 @@
+import { DeviceNotifications } from '../ui/DeviceNotifications';
 import { AppearanceSettings } from '../ui/appearance';
 import { Camera, CheckCircle2, Database, Download, KeyRound, MapPin, Plus, RefreshCw, Save, Send, Upload, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -193,9 +194,10 @@ export function SettingsPage() {
       <div className="page-head"><div className="grow"><h1>Настройки</h1></div></div>
       <div className="grid g-2">
         <AppearanceSettings />
+        <DeviceNotifications />
         <div className="card card-pad col" style={{ gap: 10 }}>
           <h2>Уведомления</h2>
-          <p className="small muted" style={{ margin: 0 }}>Какие события показывать в колокольчике. Telegram подключается в профиле.</p>
+          <p className="small muted" style={{ margin: 0 }}>Какие события показывать на сайте и отправлять на это устройство. Напоминания об отчётах входят в «Отчёты и сводки». Telegram подключается в профиле.</p>
           {(Object.keys(NOTIFY_LABEL) as Notification['kind'][]).map((k) => (
             <label key={k} className="check"><input type="checkbox" checked={s.ui.notify[k] !== false} onChange={(e) => { setUi({ notify: { ...s.ui.notify, [k]: e.target.checked } }); toast('Настройка сохранена'); }} />{NOTIFY_LABEL[k]}</label>
           ))}

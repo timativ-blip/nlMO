@@ -1,4 +1,5 @@
-import { Activity, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
+import { NotificationDelivery } from './ui/NotificationDelivery';
+import { Activity, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, MessageCircle, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -55,7 +56,7 @@ const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: b
 export default function App() {
   const { phase } = usePhase();
   useEffect(() => { onSaveError((m) => toast(m, 'error')); }, []);
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has('auth-preview')) return <><AuthGate preview /><Toaster /></>;
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('auth-preview')) return <><AuthGate preview={new URLSearchParams(location.search).get('auth-preview') === 'loading' ? 'loading' : true} /><Toaster /></>;
   if (phase !== 'ready') return <><AuthGate /><Toaster /></>;
   return <Workspace />;
 }
@@ -182,6 +183,7 @@ function Workspace() {
       <RecordsModal />
       <Toaster />
       <CommunicationsRoot />
+      <NotificationDelivery />
     </div>
   );
 }
@@ -213,11 +215,12 @@ function Notifications() {
       {open && (
         <div className="popover" role="dialog" aria-label="Уведомления">
           <div className="row" style={{ padding: '12px 14px' }}><b className="grow">Уведомления</b>{unread > 0 && <Button size="sm" variant="ghost" onClick={() => markRead()}>Прочитать все</Button>}</div>
+          <div className="notifications-device-link"><button onClick={() => { setOpen(false); go('/settings'); }}><Bell size={14}/>Уведомления на устройстве →</button></div>
           <div style={{ maxHeight: 420, overflowY: 'auto' }}>
             {list.length === 0 && <div className="small muted" style={{ padding: '16px 14px', borderTop: '1px solid var(--border)' }}>Новых уведомлений нет. Здесь появятся назначения, комментарии, решения по проверке и изменения мероприятий.</div>}
             {list.map((n) => (
               <button key={n.id} className={`notif ${n.read ? '' : 'unread'}`} onClick={() => openLink(n)}>
-                <span className="n-icon">{n.kind === 'event' ? <CalendarDays size={15} /> : n.kind === 'report' ? <FileText size={15} /> : n.kind === 'deadline' ? <Bell size={15} /> : n.kind === 'media' ? <Megaphone size={15} /> : <CheckSquare size={15} />}</span>
+                <span className="n-icon">{n.kind === 'meeting' ? <Video size={15} /> : n.kind === 'message' || n.kind === 'comment' ? <MessageCircle size={15} /> : n.kind === 'event' ? <CalendarDays size={15} /> : n.kind === 'report' ? <FileText size={15} /> : n.kind === 'deadline' ? <Bell size={15} /> : n.kind === 'media' ? <Megaphone size={15} /> : <CheckSquare size={15} />}</span>
                 <span className="grow"><span className="n-text small" style={{ display: 'block' }}>{n.text}</span><span className="small muted">{n.id.startsWith('dl-') ? 'напоминание' : fmtAgo(n.at)}</span></span>
               </button>
             ))}
