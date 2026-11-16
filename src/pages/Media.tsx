@@ -1,3 +1,4 @@
+import { ASSESSED_NETWORKS, publicationAssessment, TELEGRAM_ASSESSMENT_NOTE, type PublicationNetwork } from '../../supabase/functions/_shared/media-policy';
 // «Пиши-Делись» и «Анализ медиа» — перенесено из отдельного приложения media-podmoskovya.
 // Данные: Supabase-функции media-pd (посты из выгрузки «Пиши-Делись» + список людей по округам)
 // и media-groups (последний пост в партийных группах ВК и Telegram по таблице групп).
@@ -356,17 +357,19 @@ function About() {
 }
 
 /* ───────── Группы ВК и Telegram: когда был последний пост ───────── */
-function chState(ch: Channel | null) {
+function chState(ch: Channel | null, network: PublicationNetwork = 'vk') {
+  const assessment = publicationAssessment(ch, network);
   if (!ch) return { cls: 'none', txt: 'нет группы', days: null as number | null };
   if (ch.status === 'nokey') return { cls: 'none', txt: 'нужен ключ ВК', days: null };
   if (ch.status === 'closed') return { cls: 'none', txt: 'лента закрыта', days: null };
   if (ch.status === 'error') return { cls: 'none', txt: 'не проверить', days: null };
-  if (ch.status === 'empty' || !ch.last) return { cls: 'bad', txt: 'постов нет', days: Infinity };
+  if (ch.status === 'empty') return { ...assessment, txt: 'постов нет' };
+  if (assessment.days === null) return { ...assessment, txt: 'не проверить' };
   const msk = (t: number) => new Date(t + 3 * 3600e3).toISOString().slice(0, 10);
-  const days = Math.round((Date.parse(msk(Date.now())) - Date.parse(msk(Date.parse(ch.last)))) / 864e5);
-  const d = msk(Date.parse(ch.last)).split('-').reverse().join('.');
+  const days = assessment.days;
+  const d = msk(Date.parse(ch.last!)).split('-').reverse().join('.');
   const txt = days <= 0 ? 'сегодня' : days === 1 ? 'вчера' : days <= 30 ? `${days} ${plural(days, ['день', 'дня', 'дней'])} назад` : `молчит с ${d}`;
-  return { cls: days <= 1 ? 'fresh' : days <= 3 ? 'warn' : 'bad', txt, days };
+  return { ...assessment, txt };
 }
 function GroupsView({ pd }: { pd: PdData | null }) {
   const G = useJson<GroupsData>('media-groups', 5 * 60000);
@@ -380,13 +383,13 @@ function GroupsView({ pd }: { pd: PdData | null }) {
   const items = G.data.groups
     .filter((g) => (!okr || g.okrug === okr) && (!q || norm(`${g.city} ${g.coord} ${g.resp}`).includes(norm(q))) && (net === 'all' || g[net]))
     .map((g) => {
-      const st = nets.map((n) => [n, chState(g[n])] as const);
-      const known = st.filter(([, x]) => x.days !== null);
+      const st = nets.map((n) => [n, chState(g[n], n)] as const);
+      const known = st.filter(([n, x]) => ASSESSED_NETWORKS.some(a => a === n) && x.days !== null);
       const worst = known.length ? Math.max(...known.map(([, x]) => x.days as number)) : -1;
       return { g, st, worst, cls: !known.length ? 'none' : worst <= 1 ? 'fresh' : worst <= 3 ? 'warn' : 'bad' };
     });
-  const cnt = { fresh: 0, warn: 0, bad: 0, none: 0 } as Record<string, number>;
-  items.forEach((it) => it.st.forEach(([n, x]) => { if (it.g[n] || net !== 'all') cnt[x.cls]++; }));
+  const cnt = { fresh: 0, warn: 0, bad: 0, none: 0, reference: 0 } as Record<string, number>;
+  items.forEach((it) => it.st.forEach(([n, x]) => { if (it.g[n] || net !== 'all') cnt[n === 'tg' ? 'reference' : x.cls]++; }));
   const order: Record<string, number> = { bad: 0, warn: 1, fresh: 2, none: 3 };
   const card = (it: (typeof items)[number]) => (
     <div key={it.g.okrug + it.g.city} className="gcard">
@@ -402,20 +405,21 @@ function GroupsView({ pd }: { pd: PdData | null }) {
   );
   return (
     <>
+      <p className="small muted">{TELEGRAM_ASSESSMENT_NOTE}</p>
       {G.data.sourceStatus === 'stale' && <p className="callout warning" role="status">Не удалось обновить мониторинг. Показана последняя проверка; автоматические напоминания по этим данным не отправляются.</p>}
       <div className="toolbar">
         <Segmented label="Сеть" value={net} onChange={setNet} options={[{ value: 'all', label: 'ВК и Telegram' }, { value: 'vk', label: 'ВКонтакте' }, { value: 'tg', label: 'Telegram' }]} />
-        <Segmented label="Порядок" value={sort} onChange={setSort} options={[{ value: 'worst', label: 'Давно молчат' }, { value: 'okr', label: 'По округам' }]} />
+        <Segmented label="Порядок" value={sort} onChange={setSort} options={[{ value: 'worst', label: net === 'tg' ? 'По городам' : 'Давно молчат в ВК' }, { value: 'okr', label: 'По округам' }]} />
       </div>
       <div className="toolbar">
         <select className="select select-sm" value={okr} onChange={(e) => setOkr(e.target.value)} aria-label="Округ"><option value="">Все округа</option>{[...new Set(G.data.groups.map((g) => g.okrug))].map((o) => <option key={o} value={o}>{okrName(o)}</option>)}</select>
         <div className="search-input"><Search size={15} /><input className="input" placeholder="Город или человек" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Поиск по городу или человеку" /></div>
       </div>
-      <div className="row wrap" style={{ marginBottom: 12 }}><span className="badge st-done">Свежие (0–1 день): {cnt.fresh}</span><span className="badge st-review">2–3 дня: {cnt.warn}</span><span className="badge st-overdue">Молчат 4+ дней: {cnt.bad}</span><span className="badge badge-soft">Нет данных: {cnt.none}</span></div>
+      <div className="row wrap" style={{ marginBottom: 12 }}><span className="badge st-done">ВК свежие (0–1 день): {cnt.fresh}</span><span className="badge st-review">ВК 2–3 дня: {cnt.warn}</span><span className="badge st-overdue">ВК молчат 4+ дней: {cnt.bad}</span><span className="badge badge-soft">Нет данных ВК: {cnt.none}</span><span className="badge badge-soft">Telegram справочно: {cnt.reference}</span></div>
       {!items.length ? <div className="card"><Empty icon={Search} title="Ничего не нашли" /></div> : sort === 'worst'
         ? <div className="card gcards">{[...items].sort((a, b) => order[a.cls] - order[b.cls] || b.worst - a.worst || a.g.city.localeCompare(b.g.city, 'ru')).map(card)}</div>
         : [...new Set(items.map((it) => it.g.okrug))].map((o) => <div key={o} style={{ marginBottom: 14 }}><h2 className="sec-title">{okrName(o)}</h2><div className="card gcards">{items.filter((it) => it.g.okrug === o).map(card)}</div></div>)}
-      <p className="small muted">Сколько дней назад в группе был последний пост (закреплённые не считаются). Зелёный — сегодня или вчера, жёлтый — 2–3 дня, красный — 4 дня и больше. Нажмите на метку, чтобы открыть пост. Список групп берётся из таблицы, проверка — раз в 15 минут.{!G.data.vkEnabled && <b> ВКонтакте пока не проверяется: нужен сервисный ключ ВК (секрет VK_TOKEN в Supabase).</b>}</p>
+      <p className="small muted">Сколько дней назад в группе был последний пост (закреплённые не считаются). Цветовая оценка применяется только к ВК: зелёный — сегодня или вчера, жёлтый — 2–3 дня, красный — 4 дня и больше. Telegram показан нейтрально. Нажмите на метку, чтобы открыть пост. Список групп берётся из таблицы, проверка — раз в 15 минут.{!G.data.vkEnabled && <b> ВКонтакте пока не проверяется: нужен сервисный ключ ВК (секрет VK_TOKEN в Supabase).</b>}</p>
     </>
   );
 }
@@ -455,7 +459,7 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
   const gStat = G.data ? (() => {
     const c = { fresh: 0, warn: 0, bad: 0, none: 0 } as Record<string, number>;
     const silent = new Map<string, number>();
-    G.data.groups.forEach((g) => (['vk', 'tg'] as const).forEach((n) => { if (!g[n]) return; const st = chState(g[n]); c[st.cls]++; if (st.cls === 'bad') silent.set(g.okrug, (silent.get(g.okrug) ?? 0) + 1); }));
+    G.data.groups.forEach((g) => ASSESSED_NETWORKS.forEach((n) => { if (!g[n]) return; const st = chState(g[n]); c[st.cls]++; if (st.cls === 'bad') silent.set(g.okrug, (silent.get(g.okrug) ?? 0) + 1); }));
     return { c, silent: [...silent].sort((a, b) => b[1] - a[1]).slice(0, 5) };
   })() : null;
   const Tile = ({ label, value, foot }: { label: string; value: string; foot?: React.ReactNode }) => <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">{label}</span><span className="kpi-value">{value}</span><span className="kpi-foot">{foot}</span></div>;
@@ -508,13 +512,14 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
           </div>
         </div>
         <div className="card">
-          <div className="card-head"><h2 className="grow">Группы ВК и ТГ</h2><button className="btn btn-ghost btn-sm" onClick={() => go('/media/groups')}>Все</button></div>
+          <div className="card-head"><h2 className="grow">Активность групп ВК</h2><button className="btn btn-ghost btn-sm" onClick={() => go('/media/groups')}>Все</button></div>
           <div className="card-body">
             {!gStat ? <div className="map-skel" style={{ height: 120 }} /> : (
               <>
                 <div className="row wrap" style={{ marginBottom: 10 }}><span className="badge st-done">свежие: {gStat.c.fresh}</span><span className="badge st-review">2–3 дня: {gStat.c.warn}</span><span className="badge st-overdue">молчат 4+: {gStat.c.bad}</span></div>
-                <div className="small muted" style={{ marginBottom: 4 }}>Где больше всего молчащих групп</div>
-                {gStat.silent.length ? gStat.silent.map(([o, n]) => <div key={o} className="row" style={{ padding: '4px 0' }}><span className="grow">{A.label(o) || (o === 'МО' ? 'Региональные' : o)}</span><b className="num">{n}</b></div>) : <span className="small muted">Молчащих групп нет</span>}
+                <p className="small muted">Telegram — справочно, не влияет на оценку и тревоги.</p>
+                <div className="small muted" style={{ marginBottom: 4 }}>Где больше всего молчащих групп ВК</div>
+                {gStat.silent.length ? gStat.silent.map(([o, n]) => <div key={o} className="row" style={{ padding: '4px 0' }}><span className="grow">{A.label(o) || (o === 'МО' ? 'Региональные' : o)}</span><b className="num">{n}</b></div>) : <span className="small muted">Молчащих групп ВК нет</span>}
               </>
             )}
           </div>

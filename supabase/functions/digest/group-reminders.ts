@@ -1,3 +1,4 @@
+import { ASSESSED_NETWORKS } from '../_shared/media-policy.ts';
 interface Channel {
   status: string;
   last?: string;
@@ -37,7 +38,7 @@ export function districtPublicationReminders(
   for (const group of monitor.groups) {
     const did = String(group.okrug).trim();
     if (!/^(11[89]|12[0-9])$/.test(did)) continue;
-    for (const key of ["vk", "tg"] as const) {
+    for (const key of ASSESSED_NETWORKS) {
       const channel = group[key];
       if (channel?.status !== "ok" || !channel.last) continue;
       const last = Date.parse(channel.last),
