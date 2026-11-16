@@ -23,4 +23,5 @@ jobs:
       - run: npm run test:telegram
       - run: npm run test:communications
       - run: npm run test:headquarters
+      - run: npm run test:team
       - run: npm run build

@@ -1,3 +1,5 @@
+import OfflineReports from './pages/OfflineReports';
+import { ReportDeliveryEngine, ReportDeliveryStatus, useReportOperations } from './ui/ReportDelivery';
 import { NotificationDelivery } from './ui/NotificationDelivery';
 import { Activity, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, MessageCircle, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -57,8 +59,10 @@ export default function App() {
   const { phase } = usePhase();
   useEffect(() => { onSaveError((m) => toast(m, 'error')); }, []);
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('auth-preview')) return <><AuthGate preview={new URLSearchParams(location.search).get('auth-preview') === 'loading' ? 'loading' : true} /><Toaster /></>;
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('offline-preview')) return <><OfflineReports/><Toaster/></>;
+  if (phase === 'offline') return <><OfflineReports/><ReportDeliveryEngine/><Toaster/></>;
   if (phase !== 'ready') return <><AuthGate /><Toaster /></>;
-  return <Workspace />;
+  return <><Workspace /><ReportDeliveryEngine/></>;
 }
 
 function Workspace() {
@@ -73,6 +77,8 @@ function Workspace() {
   const toggleSidebar = () => { const next = !collapsed; setCollapsed(next); try { localStorage.setItem('kc-sidebar-collapsed', next ? '1' : '0'); } catch { /* optional preference */ } };
 
   const syncing = useSyncing();
+  const {rows: reportQueue} = useReportOperations();
+  const reportsPending = reportQueue.some(op => op.status !== 'sent');
   useEffect(() => { void loadWorkflowData(); const timer = setInterval(() => { void loadWorkflowData(); }, 60000); return () => clearInterval(timer); }, [me.id]);
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
   useEffect(() => {
@@ -135,7 +141,7 @@ function Workspace() {
         <a href="#/profile" aria-label="Профиль" title={collapsed ? 'Профиль' : undefined} className={`nav-item ${page === 'profile' ? 'active' : ''}`}><UserIcon size={19} /><span className="nav-label">Профиль</span></a>
         <a href="#/settings" aria-label="Настройки" title={collapsed ? 'Настройки' : undefined} className={`nav-item ${page === 'settings' || page === 'import' ? 'active' : ''}`}><Settings size={19} /><span className="nav-label">Настройки</span></a>
         <div className="side-foot">
-          {DEMO_MODE ? <div className="demo-chip"><FlaskConical size={13} />Деморежим</div> : <div className="small row sync-status"><span className={`sync-dot ${syncing ? 'busy' : ''}`} />{syncing ? 'Сохраняю…' : 'Всё сохранено'}</div>}
+          {DEMO_MODE ? <div className="demo-chip"><FlaskConical size={13} />Деморежим</div> : <div className="small row sync-status"><span className={`sync-dot ${syncing ? 'busy' : ''}`} />{syncing ? 'Сохраняю…' : reportsPending ? 'Отчёты ждут отправки' : 'Всё сохранено'}</div>}
           <div className="small side-date">Время московское · {fmtDayMonth(todayISO())}</div>
         </div>
       </aside>
@@ -155,7 +161,7 @@ function Workspace() {
           <Notifications />
           <ProfileMenu />
         </header>
-        <main id="main" className="content" tabIndex={-1}><WorkspaceSections items={NAV} page={page}/><div className="page-enter" key={page}>{content}</div></main>
+        <main id="main" className="content" tabIndex={-1}><ReportDeliveryStatus/><WorkspaceSections items={NAV} page={page}/><div className="page-enter" key={page}>{content}</div></main>
       </div>
 
       <nav className="bottom-nav" aria-label="Навигация">

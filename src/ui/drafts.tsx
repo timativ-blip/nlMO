@@ -22,6 +22,7 @@ export function useDraft<T>(form: string, initial: T, revision = '') {
       value: record?.value ?? initial,
       baseline: initial,
       revision,
+      baseRevision: record?.revision ?? revision,
       at: record?.at ?? 0,
       restored: !!record && !same(record.value, initial),
       error: '',
@@ -45,11 +46,24 @@ export function useDraft<T>(form: string, initial: T, revision = '') {
       revision,
       ...(dirty
         ? { conflict: previous.conflict || previous.revision !== revision }
-        : { baseline: initialRef.current, value: initialRef.current, conflict: false }),
+        : { baseline: initialRef.current, value: initialRef.current, baseRevision: revision, conflict: false }),
     };
     current.current = next;
     update(next);
   }, [key, revision, JSON.stringify(initial)]);
+  useEffect(() => {
+    const confirmed = (event: Event) => {
+      const detail = (event as CustomEvent<{key:string;value:T;revision:string}>).detail;
+      const previous = current.current;
+      if (!detail || detail.key !== key || previous.key !== key) return;
+      const unchanged = same(previous.value, detail.value);
+      const next = {...previous, baseline:detail.value, revision:detail.revision, baseRevision:detail.revision, conflict:false, ...(unchanged ? {at:0,restored:false} : {})};
+      current.current=next; update(next);
+      if (!unchanged) { try { writeDraft(key, previous.value, detail.revision, localStorage); } catch {} }
+    };
+    window.addEventListener('kc-draft-confirmed', confirmed);
+    return () => window.removeEventListener('kc-draft-confirmed', confirmed);
+  }, [key]);
   const set = (change: T | ((previous: T) => T)) => {
     const previous = current.current;
     const value = typeof change === 'function' ? (change as (v: T) => T)(previous.value) : change;
@@ -59,7 +73,7 @@ export function useDraft<T>(form: string, initial: T, revision = '') {
       if (same(value, previous.baseline)) {
         localStorage.removeItem(key);
         at = 0;
-      } else at = writeDraft(key, value, revision, localStorage);
+      } else at = writeDraft(key, value, previous.baseRevision, localStorage);
     } catch {
       error = 'Не удалось сохранить черновик на устройстве. Не закрывайте форму до отправки.';
     }
@@ -74,7 +88,7 @@ export function useDraft<T>(form: string, initial: T, revision = '') {
     } catch {
       error = 'Не удалось очистить черновик на устройстве.';
     }
-    const next = { ...current.current, value, baseline: value, revision, at: 0, restored: false, conflict: false, error };
+    const next = { ...current.current, value, baseline: value, revision, baseRevision: revision, at: 0, restored: false, conflict: false, error };
     current.current = next;
     update(next);
   };
@@ -112,6 +126,7 @@ export function useDraft<T>(form: string, initial: T, revision = '') {
     at: current.current.at,
     error: current.current.error,
     conflict: current.current.conflict,
+    baseRevision: current.current.baseRevision,
   };
 }
 

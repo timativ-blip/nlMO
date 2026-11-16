@@ -1,3 +1,4 @@
+import { REWORK_REASONS, reworkReasonLabel, type ReworkReason } from '../data/rework';
 import { AlertTriangle, Ban, CalendarDays, Check, ChevronDown, ChevronUp, History, ListChecks, MessageSquare, Paperclip, Play, Plus, RotateCcw, Send, Target, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isOnTime, isOverdue, taskPoints } from '../data/calc';
@@ -167,15 +168,18 @@ function SubmitForm({ task, onClose }: { task: Task; onClose: () => void }) {
 /* ───────── Возврат на доработку ───────── */
 export function ReturnModal({ task, onClose }: { task: Task | null; onClose: () => void }) {
   const [c, setC] = useState('');
+  const [reason, setReason] = useState<ReworkReason | ''>('');
   const [err, setErr] = useState('');
-  useEffect(() => { setC(''); setErr(''); }, [task?.id]);
+  useEffect(() => { setC(''); setReason(''); setErr(''); }, [task?.id]);
   if (!task) return null;
   const send = () => {
+    if (!reason) { setErr('Выберите причину возврата.'); return; }
     if (c.trim().length < 5) { setErr('Комментарий обязателен: напишите, что именно нужно доработать.'); return; }
-    if (run(() => returnTask(task.id, c), 'Задача возвращена на доработку, исполнитель получил уведомление')) onClose();
+    if (run(() => returnTask(task.id, c, reason), 'Задача возвращена на доработку, исполнитель получил уведомление')) onClose();
   };
   return (
     <Modal open onClose={onClose} title="Вернуть на доработку" footer={<><Button variant="ghost" onClick={onClose}>Отмена</Button><Button variant="danger" icon={RotateCcw} onClick={send}>Вернуть</Button></>}>
+      <Field label="Причина возврата" required><Select value={reason} onChange={e=>{setReason(e.target.value as ReworkReason);setErr('');}} options={[{value:'',label:'Выберите причину'},...Object.entries(REWORK_REASONS).map(([value,label])=>({value,label}))]}/></Field>
       <Field label="Что нужно доработать" required error={err}><Textarea autoFocus rows={4} invalid={!!err} value={c} onChange={(e) => { setC(e.target.value); setErr(''); }} placeholder="Например: добавьте список вопросов жителей и число участников" /></Field>
     </Modal>
   );
@@ -330,7 +334,7 @@ function TaskDrawerInner({ t, onClose }: { t: Task; onClose: () => void }) {
           <div key={c.id} className={`comment ${c.kind ?? ''}`}>
             <Avatar user={L.user(c.authorId)} size={28} />
             <div className="grow">
-              <div className="small"><b>{L.user(c.authorId)?.name}</b> <span className="muted">· {fmtAgo(c.at)}{c.kind === 'return' ? ' · возврат на доработку' : c.kind === 'result' ? ' · результат' : ''}</span></div>
+              <div className="small"><b>{L.user(c.authorId)?.name}</b> <span className="muted">· {fmtAgo(c.at)}{c.kind === 'return' ? ` · возврат: ${reworkReasonLabel(c.reworkReason)}` : c.kind === 'result' ? ' · результат' : ''}</span></div>
               <div className="comment-body">{c.text}</div>
             </div>
           </div>

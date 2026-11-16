@@ -13,3 +13,5 @@ dist
 supabase/.temp/
 
 .test-headquarters
+
+.test-team

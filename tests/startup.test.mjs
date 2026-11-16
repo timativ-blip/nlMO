@@ -121,3 +121,18 @@ test('a visible pending profile waits for approval instead of opening the worksp
  const app=await start({signedIn:true,role:'coordinator',active:false,pending:true});
  assert.equal(app.getPhase().phase,'pending');
 });
+
+test('a verified account can reopen only the report editor offline; logout revokes cached access',async()=>{
+ const idb=await import('fake-indexeddb');globalThis.indexedDB=idb.indexedDB;globalThis.IDBKeyRange=idb.IDBKeyRange;
+ const nav=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+ try{
+  Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+  const online=await start({signedIn:true,role:'head'});for(let i=0;i<25&&!entries.get('kc-offline-report-user:sb-test-auth-token');i++)await wait(10);assert.equal(online.getPhase().phase,'ready');assert.equal(entries.get('kc-offline-report-user:sb-test-auth-token'),'test-user');
+  entries.set('sb-test-auth-token',JSON.stringify({user:{id:'test-user'}}));
+  Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
+  const config={authHang:true};const offline=await start(config);for(let i=0;i<25&&offline.getPhase().phase==='loading';i++)await wait(10);
+  assert.equal(offline.getPhase().phase,'offline');assert.equal(offline.getState().session.userId,'test-user');assert.deepEqual(offline.getState().tasks,[]);assert.deepEqual(offline.getState().notifications,[]);
+  config.emit('SIGNED_OUT',null);await wait();
+  const afterLogout=await start({authHang:true});await wait(65);assert.notEqual(afterLogout.getPhase().phase,'offline');
+ }finally{if(nav)Object.defineProperty(globalThis,'navigator',nav);else delete globalThis.navigator;}
+});
