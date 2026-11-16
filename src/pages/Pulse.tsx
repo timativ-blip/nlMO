@@ -1,3 +1,4 @@
+import { silentGroupCount, TELEGRAM_ASSESSMENT_NOTE } from '../../supabase/functions/_shared/media-policy';
 // «Пульс области»: зашёл — и сразу видно, где хорошо и где плохо.
 // Источники: задачи (база), «Пиши-Делись» (media-pd), партийные группы (media-groups), ежедневные отчёты.
 import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
@@ -42,10 +43,10 @@ export function usePulse() {
     const r = dist.find((x) => x.districtId === d.id);
     const g = A?.groups.find((x) => x.id === d.id);
     const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
-    const writing = g && g.roster ? g.mem.filter((a) => a.okPosts).length / g.roster : null;
+    const writing = g && g.roster ? g.authors / g.roster : null;
     const planPosts = s.pdPlan ? pdPlanFor(s.pdPlan, d.id) * pdShare : 0;
     const pdPlanPct = g && planPosts ? g.posts / planPosts : null;
-    const silent = gr.data ? gr.data.groups.filter((x) => x.okrug === d.id).reduce((n, x) => n + (['vk', 'tg'] as const).filter((k) => { const ch = x[k]; if (!ch || ch.status !== 'ok' || !ch.last) return ch?.status === 'empty'; return (Date.now() - Date.parse(ch.last)) / 864e5 >= 4; }).length, 0) : null;
+    const silent = gr.data && gr.data.sourceStatus !== 'stale' ? silentGroupCount(gr.data.groups.filter((x) => x.okrug === d.id)) : null;
     const req = s.users.filter((u) => u.active && u.districtId === d.id && P.mustReportDaily(u));
     const dailyShare = req.length ? req.reduce((n, u) => n + workdays.filter((wd) => s.dailyReports.some((x) => x.userId === u.id && x.day === wd)).length, 0) / (req.length * workdays.length) : null;
     const signals: Signal[] = [
@@ -53,7 +54,7 @@ export function usePulse() {
       { key: 'overdue', label: 'Просрочки', value: String(overdue), light: lvl(overdue, 0, 3, true), alert: overdue > 3 ? `${overdue} ${plural(overdue, ['просроченная задача', 'просроченные задачи', 'просроченных задач'])}` : undefined, link: `/tasks?overdue=1&district=${d.id}` },
       { key: 'pdplan', label: 'План постов', value: pdPlanPct === null ? '—' : pct(pdPlanPct), light: lvl(pdPlanPct, 0.9, 0.6), alert: pdPlanPct !== null && pdPlanPct < 0.6 ? `план постов «Пиши-Делись» выполнен на ${pct(pdPlanPct)}` : undefined, link: '/media/okr' },
       { key: 'writing', label: 'Пишут в ПД', value: writing === null ? '—' : pct(writing), light: lvl(writing, 0.7, 0.5), alert: writing !== null && writing < 0.5 ? `пишут только ${pct(writing)} из списка` : undefined, link: '/media/idle' },
-      { key: 'groups', label: 'Молчат группы', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа молчит', 'группы молчат', 'групп молчат'])} 4+ дней` : undefined, link: '/media/groups' },
+      { key: 'groups', label: 'Молчат группы ВК', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа ВК молчит', 'группы ВК молчат', 'групп ВК молчат'])} 4+ дней` : undefined, link: '/media/groups' },
       { key: 'daily', label: 'Отчёты дня', value: dailyShare === null ? '—' : pct(dailyShare), light: lvl(dailyShare, 0.8, 0.5), alert: dailyShare !== null && dailyShare < 0.5 ? `ежедневные отчёты сданы на ${pct(dailyShare)} за 5 рабочих дней` : undefined, link: '/daily' },
     ];
     const reds = signals.filter((x) => x.light === 'red').length, yellows = signals.filter((x) => x.light === 'yellow').length;
@@ -72,7 +73,7 @@ export const pdPlanFor = (plan: PdPlan, districtId: string) => plan.districts[di
 
 export function AlertList({ alerts, limit }: { alerts: ReturnType<typeof usePulse>['alerts']; limit: number }) {
   const L = useLookup();
-  if (!alerts.length) return <Empty icon={CheckCircle2} title="Тревог нет" text="Все округа в норме по задачам, «Пиши-Делись», группам и отчётам." />;
+  if (!alerts.length) return <Empty icon={CheckCircle2} title="Тревог нет" text="Все округа в норме по задачам, «Пиши-Делись», группам ВК и отчётам." />;
   return <>{alerts.slice(0, limit).map(({ d, x }, k) => (
     <button key={k} className="list-item" onClick={() => go(x.link)}>
       <span className={`ldot ${x.light}`} />
@@ -108,9 +109,11 @@ export default function PulsePage() {
   return (
     <>
       <div className="page-head">
-        <div className="grow"><h1>Пульс области</h1><div className="sub">Светофор округов и тревоги · задачи, «Пиши-Делись», группы и ежедневные отчёты</div></div>
+        <div className="grow"><h1>Пульс области</h1><div className="sub">Светофор округов и тревоги · задачи, «Пиши-Делись», группы ВК и ежедневные отчёты</div></div>
         <div className="row wrap"><span className="badge st-done">в норме: {counts.green}</span><span className="badge st-review">внимание: {counts.yellow}</span><span className="badge st-overdue">проблема: {counts.red}</span></div>
       </div>
+
+      <p className="small muted">{TELEGRAM_ASSESSMENT_NOTE}</p>
 
       <div className="lights">
         {rows.map((r) => (
