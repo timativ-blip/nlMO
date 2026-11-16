@@ -1,3 +1,4 @@
+import type { ReworkReason } from './rework';
 export type Role = 'head' | 'coordinator' | 'staff' | 'member';
 // Роль в команде — что видят коллеги; уровень доступа (role) определяет права.
 export type TeamRole = 'head' | 'developer' | 'deputy' | 'coordinator' | 'deputy_coordinator' | 'staff' | 'media' | 'member' | 'party_member';
@@ -60,6 +61,7 @@ export interface Comment {
   text: string;
   at: string;
   kind?: 'comment' | 'return' | 'result' | 'system';
+  reworkReason?: ReworkReason | 'unspecified';
 }
 
 export interface HistoryItem {

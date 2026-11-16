@@ -1,7 +1,21 @@
 // Сервис-воркер: приложение открывается как программа и запускается без сети.
 // Данные из Supabase и Telegram не кешируются — только оболочка сайта.
-const CACHE = 'kc-v16-blue-startup-media-writers';
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png', './logo-light.png', './logo-dark.png']))); self.skipWaiting(); });
+const CACHE = 'kc-v17-offline-reports';
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    const response = await fetch(new URL('index.html', self.registration.scope), {cache:'reload'});
+    if (!response.ok) throw new Error('App shell unavailable');
+    const html = await response.clone().text();
+    // Include the hashed entry and stylesheet on the first visit, before going offline.
+    const assets = [...html.matchAll(/(?:src|href)=["']([^"']+\/assets\/[^"']+|\.\/assets\/[^"']+|\/[^"']*assets\/[^"']+)["']/g)]
+      .map(match => new URL(match[1], self.registration.scope)).filter(url => url.origin === self.location.origin);
+    await cache.addAll(['./manifest.webmanifest','./icon-192.png','./logo-light.png','./logo-dark.png',...assets.map(url=>url.href)]);
+    await cache.put(new URL('index.html',self.registration.scope),response.clone());
+    await cache.put(self.registration.scope,response);
+    await self.skipWaiting();
+  })());
+});
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const req = e.request;

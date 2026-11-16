@@ -1,3 +1,6 @@
+import { cacheReportWorkspace, cachedReportWorkspace, clearOfflineReportAccess, persistedSessionUser } from '../lib/offline-report-cache';
+import { transientReportError } from '../lib/report-queue';
+import { isReworkReason, type ReworkReason } from './rework';
 import { disablePush } from '../lib/push';
 // Хранилище приложения: состояние в памяти, подписка через useSyncExternalStore.
 // Каждое действие проверяет права (см. perm.ts), пишет историю и уведомления.
@@ -92,7 +95,7 @@ export const useAppState = () => useSyncExternalStore(subscribe, () => state);
 export const getState = () => state;
 
 /* ───────── Фаза приложения (рабочий режим): загрузка, вход, первый запуск ───────── */
-export type Phase = 'loading' | 'signed-out' | 'setup' | 'ready' | 'error' | 'pending';
+export type Phase = 'loading' | 'signed-out' | 'setup' | 'ready' | 'error' | 'pending' | 'offline';
 let phase: Phase = BACKEND ? 'loading' : 'ready';
 let phaseError = '';
 let phaseSnapshot: { phase: Phase; error: string } = { phase, error: phaseError };
@@ -158,6 +161,7 @@ function applyRemote(table: string, data: unknown, deleted = false) {
   const next = deleted ? list.filter((x) => x.id !== item.id) : i >= 0 ? list.map((x, j) => (j === i ? item : x)) : c === 'notifications' ? [item, ...list] : [...list, item];
   state = { ...state, [c]: next };
   emit();
+  if (['reports', 'dailyReports', 'users'].includes(c) && phase === 'ready') { const generation=authGeneration; void cacheReportWorkspace(AUTH_STORAGE_KEY, state, () => generation===authGeneration).catch(() => {}); }
 }
 
 async function refresh(signal?: AbortSignal) {
@@ -175,10 +179,36 @@ async function refresh(signal?: AbortSignal) {
     if (generation === authGeneration && uid === state.session.userId) { state = { ...state, audit }; emit(); }
   }).catch(() => { /* The workspace can be used while the journal is unavailable. */ });
   emit();
+  if (me?.active && !me.pending && me.role !== 'member') void cacheReportWorkspace(AUTH_STORAGE_KEY, state, () => generation===authGeneration && uid===state.session.userId).catch(() => {});
   return me;
 }
 
 let channel: ReturnType<NonNullable<typeof sb>['channel']> | null = null;
+async function recoverOfflineReports(expectedUser: string | undefined, generation: number) {
+  const uid = expectedUser || persistedSessionUser(AUTH_STORAGE_KEY);
+  if (!uid) return false;
+  try {
+    const cached = await cachedReportWorkspace(AUTH_STORAGE_KEY, uid);
+    if (!cached || generation !== authGeneration) return false;
+    channel?.unsubscribe();
+    state = { ...emptyState(), users: [cached.user], session: { userId: uid }, districts: cached.districts, reports: cached.reports, dailyReports: cached.dailyReports };
+    emit(); setPhase('offline'); return true;
+  } catch { return false; }
+}
+export async function reconnectReports() {
+  if (!BACKEND) return;
+  try { const { data, error } = await withDeadline(() => sb!.auth.getSession(), 10000, CONNECTION_ERROR); if (error) throw error; if (data.session) await boot(data.session.user.id); else { clearOfflineReportAccess(AUTH_STORAGE_KEY); await showEntry(); } }
+  catch { /* The restricted report editor remains available while the network is down. */ }
+}
+export function acceptReportRecord(kind: 'daily' | 'weekly', record: import('../lib/report-queue').ReportReply['record']) {
+  if (!record) return;
+  if (kind === 'daily' && (record as import('./types').DailyReport).userId !== state.session.userId) return;
+  const collection = kind === 'daily' ? state.dailyReports : state.reports;
+  const old = collection.find(r => r.id === record.id);
+  if (old && Date.parse(old.updatedAt) > Date.parse(record.updatedAt)) return;
+  applyRemote(kind === 'daily' ? 'daily_reports' : 'reports', record);
+}
+
 async function boot(uid: string) {
   if (bootingUserId === uid) return;
   bootingUserId = uid;
@@ -187,18 +217,20 @@ async function boot(uid: string) {
   resetWorkflowConnection();
   state = { ...emptyState(), session: { userId: uid } };
   try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && await recoverOfflineReports(uid, generation)) return;
     const me = await withDeadline((signal) => refresh(signal), 15000, CONNECTION_ERROR);
     if (generation !== authGeneration) return;
     if (!me) {
+      clearOfflineReportAccess(AUTH_STORAGE_KEY);
       const st = await withDeadline((signal) => B.myStatus(signal), 8000, CONNECTION_ERROR);
       if (generation !== authGeneration) return;
       if (st.pending) { setPhase('pending', st.name ?? ''); return; }
       setPhase('error', st.exists ? 'Ваша учётная запись отключена. Обратитесь к руководителю области или координатору округа.' : 'Учётная запись найдена, но профиль не создан. Обратитесь к руководителю области.');
       return;
     }
-    if (me.pending) { setPhase('pending', me.name); return; }
-    if (me.active === false) { setPhase('error', 'Ваша учётная запись отключена. Обратитесь к руководителю области.'); return; }
-    if (me.role === 'member') { setPhase('error', 'Кабинет теперь доступен координаторам, заместителям и сотрудникам штаба. Обратитесь к руководителю для изменения роли.'); return; }
+    if (me.pending) { clearOfflineReportAccess(AUTH_STORAGE_KEY); setPhase('pending', me.name); return; }
+    if (me.active === false) { clearOfflineReportAccess(AUTH_STORAGE_KEY); setPhase('error', 'Ваша учётная запись отключена. Обратитесь к руководителю области.'); return; }
+    if (me.role === 'member') { clearOfflineReportAccess(AUTH_STORAGE_KEY); setPhase('error', 'Кабинет теперь доступен координаторам, заместителям и сотрудникам штаба. Обратитесь к руководителю для изменения роли.'); return; }
     setPhase('ready');
     // Черновики недельных отчётов создаёт тот, у кого есть право (руководитель или координатор)
     const can = (d: string) => me.role === 'head' || (me.role === 'coordinator' && me.districtId === d);
@@ -229,6 +261,7 @@ async function boot(uid: string) {
     });
     channel.subscribe();
   } catch (e) {
+    if (generation === authGeneration && transientReportError(e) && await recoverOfflineReports(uid, generation)) return;
     if (generation === authGeneration) setPhase('error', e instanceof Error ? e.message : 'Не удалось загрузить данные.');
   } finally {
     if (generation === authGeneration) bootingUserId = null;
@@ -252,21 +285,22 @@ async function showEntry() {
 if (BACKEND) {
   const initialGeneration = authGeneration;
   (async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && await recoverOfflineReports(undefined, initialGeneration)) return;
     const { data, error } = await withDeadline(() => sb!.auth.getSession(), 12000, CONNECTION_ERROR);
     if (initialGeneration !== authGeneration) return;
     if (error) throw new Error(B.humanError(error.message));
     if (data.session) return boot(data.session.user.id);
     return showEntry();
-  })().catch((error) => { if (initialGeneration === authGeneration) setPhase('error', error instanceof Error ? error.message : CONNECTION_ERROR); });
+  })().catch(async (error) => { if (initialGeneration === authGeneration && transientReportError(error) && await recoverOfflineReports(undefined, initialGeneration)) return; if (initialGeneration === authGeneration) setPhase('error', error instanceof Error ? error.message : CONNECTION_ERROR); });
   sb!.auth.onAuthStateChange((event, session) => {
     // Supabase awaits auth callbacks while holding its session lock. Never start SDK queries there.
     if (event !== 'SIGNED_OUT' && event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') return;
     setTimeout(() => {
       if (event === 'SIGNED_OUT') {
-        ++authGeneration; bootingUserId = null;
+        ++authGeneration; bootingUserId = null; clearOfflineReportAccess(AUTH_STORAGE_KEY);
         channel?.unsubscribe(); resetWorkflowConnection(); state = emptyState(); emit();
         void showEntry();
-      } else if (session && (session.user.id !== state.session.userId || phase !== 'ready')) {
+      } else if (session && (session.user.id !== state.session.userId || phase !== 'ready') && !(phase === 'offline' && typeof navigator !== 'undefined' && navigator.onLine === false)) {
         void boot(session.user.id);
       }
     }, 0);
@@ -276,6 +310,7 @@ if (BACKEND) {
 /** Explicit recovery from a stale local session; does not remove application data or preferences. */
 export function restartSignIn() {
   if (!AUTH_STORAGE_KEY) return;
+  clearOfflineReportAccess(AUTH_STORAGE_KEY);
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(`${AUTH_STORAGE_KEY}-code-verifier`);
@@ -287,7 +322,7 @@ export async function signIn(email: string, password: string) {
   const { error } = await sb!.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
   if (error) throw new AppError(/invalid/i.test(error.message) ? 'Неверная почта или пароль. Если забыли пароль — попросите руководителя или координатора сбросить его.' : B.humanError(error.message));
 }
-export const signOut = async () => { await disablePush().catch(() => {}); return sb!.auth.signOut({ scope: 'local' }); };
+export const signOut = async () => { clearOfflineReportAccess(AUTH_STORAGE_KEY); await disablePush().catch(() => {}); return sb!.auth.signOut({ scope: 'local' }); };
 export async function register(profile: Partial<User>, kind: 'hq' | 'okrug', password: string) {
   if (!profile.name || profile.name.trim().split(/\s+/).length < 2) throw new AppError('Укажите имя и фамилию.');
   if (!profile.email || !/^\S+@\S+\.\S+$/.test(profile.email)) throw new AppError('Укажите почту — это ваш логин.');
@@ -507,14 +542,15 @@ export function confirmTask(id: string) {
   });
 }
 
-export function returnTask(id: string, comment: string) {
+export function returnTask(id: string, comment: string, reason: ReworkReason = 'other') {
   mutate((s, me) => {
     const t = getTask(s, id);
     if (!P.canReview(me, t)) deny('Вернуть результат может координатор округа или руководитель области.');
     if (comment.trim().length < 5) throw new AppError('Напишите, что нужно доработать — комментарий обязателен.');
+    if (!isReworkReason(reason)) throw new AppError('Выберите причину возврата.');
     t.status = 'in_progress';
     t.returnedAt = stamp();
-    t.comments.push({ id: uid('m'), authorId: me.id, text: comment.trim(), at: stamp(), kind: 'return' });
+    t.comments.push({ id: uid('m'), authorId: me.id, text: comment.trim(), at: stamp(), kind: 'return', reworkReason: reason });
     t.history.push({ at: stamp(), userId: me.id, text: 'Вернул(а) на доработку' });
     notify(s, me, [t.assigneeId, ...t.coAssigneeIds], `${me.name} вернул(а) на доработку: «${t.title}»`, taskLink(t), 'review');
     audit(s, me, 'task', t.id, 'возврат');

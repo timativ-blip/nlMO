@@ -1,10 +1,12 @@
+import { queueReport } from '../data/report-delivery';
+import { ReportDeliveryStatus, useReportOperations } from '../ui/ReportDelivery';
 // Ежедневные отчёты о работе: штаб, медиа-штаб, координаторы и заместители.
 // Напоминание в 18:00 МСК по будням приходит тем, кто ещё не сдал (колокольчик + Telegram).
 import { CheckCircle2, ClipboardCheck, Save, Search } from 'lucide-react';
 import { DraftNotice, useDraft } from '../ui/drafts';
 import { useEffect, useMemo, useState } from 'react';
 import * as P from '../data/perm';
-import { saveDaily, saveWithConfirmation, useAppState } from '../data/store';
+import { useAppState } from '../data/store';
 import { roleLabel, type DailyReport, type User } from '../data/types';
 import { addDays, fmtDayLong, fmtDayMonth, fmtStamp, todayISO, WD_SHORT, weekday } from '../lib/date';
 import { go } from '../lib/router';
@@ -31,7 +33,7 @@ export default function DailyPage() {
       </div>
       <div className={isReviewer ? 'grid g-main' : ''}>
         <div className="col" style={{ gap: 16 }}>
-          {canFill ? <MyForm /> : <div className="card"><Empty icon={ClipboardCheck} title="Ежедневный отчёт не нужен" text="Его заполняют штаб, координаторы и заместители." /></div>}
+          {canFill ? <DailyReportForm /> : <div className="card"><Empty icon={ClipboardCheck} title="Ежедневный отчёт не нужен" text="Его заполняют штаб, координаторы и заместители." /></div>}
           {isReviewer && <Feed reports={visible} />}
         </div>
         {isReviewer && <TodayStatus required={required} />}
@@ -42,7 +44,7 @@ export default function DailyPage() {
   );
 }
 
-function MyForm() {
+export function DailyReportForm() {
   const s = useAppState();
   const me = useMe();
   const today = todayISO();
@@ -53,14 +55,16 @@ function MyForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => setErr(''), [day]);
+  const {rows} = useReportOperations();
+  const pending = rows.some(op => op.entity === `daily:${day}` && op.status !== 'sent');
   const days = [today, addDays(today, -1), addDays(today, -2)];
   const save = async () => {
-    if (busy) return;
+    if (busy || pending) return;
     if (v.done.trim().length < 10) { setErr('Опишите, что сделано за день — хотя бы одно предложение.'); return; }
     setBusy(true);
     try {
-      if (!await saveWithConfirmation(() => saveDaily({ day, ...v }))) { setErr('Сервер не подтвердил сохранение. Ваш текст остался в черновике.'); return; }
-      draft.confirm(v); toast(existing ? 'Отчёт обновлён' : 'Отчёт сдан — спасибо!');
+      await queueReport({kind:'daily',day,intent:'save',fields:v,baseRevision:draft.baseRevision || null});
+      toast('Отчёт сохранён на устройстве и поставлен в очередь');
     } catch (error) { setErr((error as Error).message); }
     finally { setBusy(false); }
   };
@@ -72,12 +76,13 @@ function MyForm() {
         <Select className="select-sm" style={{ width: 170 }} value={day} onChange={(e) => setDay(e.target.value)} options={days.map((d) => ({ value: d, label: d === today ? 'Сегодня' : d === addDays(today, -1) ? 'Вчера' : fmtDayMonth(d) }))} aria-label="День отчёта" />
       </div>
       <DraftNotice draft={draft} />
+      <ReportDeliveryStatus entity={`daily:${day}`} />
       <Field label="Что сделано" required error={err}><Textarea rows={4} value={v.done} invalid={!!err} onChange={(e) => { setV({ ...v, done: e.target.value }); setErr(''); }} placeholder="Встречи, публикации, обращения, мероприятия — коротко и по делу" /></Field>
       <div className="grid g-2" style={{ gap: 12 }}>
         <Field label="План на завтра"><Textarea rows={2} value={v.plan} onChange={(e) => setV({ ...v, plan: e.target.value })} /></Field>
         <Field label="Проблемы, нужна помощь"><Textarea rows={2} value={v.problems} onChange={(e) => setV({ ...v, problems: e.target.value })} /></Field>
       </div>
-      <div className="row"><Button disabled={busy} variant="primary" icon={Save} onClick={save}>{busy ? 'Сохраняю…' : existing ? 'Обновить отчёт' : 'Сдать отчёт'}</Button><span className="small muted">Напоминание приходит в 18:00 по будням, если отчёт не сдан.</span></div>
+      <div className="row"><Button disabled={busy || pending} variant="primary" icon={Save} onClick={save}>{busy ? 'Сохраняю…' : pending ? 'Ждёт подтверждения' : existing ? 'Обновить отчёт' : 'Сдать отчёт'}</Button><span className="small muted">Напоминание приходит в 18:00 по будням, если отчёт не сдан.</span></div>
     </div>
   );
 }

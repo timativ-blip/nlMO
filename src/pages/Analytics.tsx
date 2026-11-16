@@ -1,3 +1,4 @@
+import QualityPage from './Quality';
 import { ChevronDown, ChevronRight, Info, Settings2, Target } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import { ACTIVE, districtMonthlyPlan, isOverdue, kpis, num, pct, rateDistricts, rateUsers, weeklyTrend, type DistrictScore, type PersonScore } from '../data/calc';
@@ -14,7 +15,7 @@ import { ContextBar, HBars, TrendChart, useScopeDistrict } from '../ui/widgets';
 import { compute, useJson, type PdData } from './Media';
 import { InsightsOverview, ProcessAnalytics } from './Insights';
 
-type Tab = 'overview' | 'processes' | 'okrugs' | 'rating' | 'load' | 'metrics';
+type Tab = 'overview' | 'quality' | 'processes' | 'okrugs' | 'rating' | 'load' | 'metrics';
 
 export default function AnalyticsPage({ route }: { route: Route }) {
   const tab = (route.parts[1] as Tab) || 'overview';
@@ -24,9 +25,10 @@ export default function AnalyticsPage({ route }: { route: Route }) {
         <div className="grow"><h1>Аналитика</h1><div className="sub">Каждая цифра открывает список записей, из которых она рассчитана</div></div>
         <ContextBar showDistrict={tab !== 'rating' && tab !== 'okrugs'} />
       </div>
-      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'processes', label: 'Процессы' }, { value: 'okrugs', label: 'Сводка по округам' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
+      <Tabs value={tab} onChange={(v) => go(`/analytics/${v}`)} tabs={[{ value: 'overview', label: 'Обзор' }, { value: 'processes', label: 'Процессы' }, { value: 'quality', label: 'Качество работы' }, { value: 'okrugs', label: 'Сводка по округам' }, { value: 'rating', label: 'Рейтинг' }, { value: 'load', label: 'Нагрузка' }, { value: 'metrics', label: 'Показатели и правила' }]} />
       {tab === 'overview' && <InsightsOverview />}
       {tab === 'processes' && <ProcessAnalytics />}
+      {tab === 'quality' && <QualityPage />}
       {tab === 'okrugs' && <OkrugSummary />}
       {tab === 'rating' && <Rating />}
       {tab === 'load' && <Load />}
