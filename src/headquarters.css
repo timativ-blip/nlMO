@@ -609,28 +609,32 @@ h1 {
 }
 
 
-/* Frosted glass surfaces: restrained transparency, solid readable controls. */
+/* Frosted surfaces and column backgrounds stay distinct in both themes. */
 :root, :root[data-theme='light'] {
-  --glass-surface: rgba(255, 255, 255, .76);
+  --glass-surface: rgba(255, 255, 255, .94);
   --glass-panel: rgba(250, 252, 255, .93);
   --glass-control: rgba(237, 244, 255, .82);
-  --glass-stroke: rgba(126, 153, 193, .52);
+  --glass-stroke: #aabbd4;
   --glass-highlight: rgba(255, 255, 255, .95);
   --glass-sheen: rgba(255, 255, 255, .6);
   --glass-refract: rgba(145, 184, 249, .12);
-  --glass-shadow: 0 8px 28px rgba(28, 58, 109, .08), 0 1px 3px rgba(28, 58, 109, .06), inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 rgba(87, 124, 182, .12);
-  --glass-hover-shadow: 0 14px 36px rgba(38, 76, 143, .14), 0 2px 6px rgba(38, 76, 143, .06), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(87, 124, 182, .18);
+  --glass-shadow: 0 7px 22px #18376016, 0 1px 3px #132d5712, inset 0 1px 0 white;
+  --glass-hover-shadow: 0 12px 27px #15376223, 0 2px 5px #152e5a1a, inset 0 1px 0 white;
+  --kanban-lane: #f1f5fc;
+  --kanban-lane-shadow: 0 3px 12px #18376017;
 }
 :root[data-theme='dark'] {
-  --glass-surface: rgba(23, 39, 65, .76);
+  --glass-surface: rgba(32, 48, 76, .94);
   --glass-panel: rgba(20, 34, 55, .95);
   --glass-control: rgba(38, 60, 91, .82);
-  --glass-stroke: rgba(142, 176, 222, .4);
+  --glass-stroke: #5b7295;
   --glass-highlight: rgba(210, 230, 255, .25);
   --glass-sheen: rgba(187, 215, 255, .12);
   --glass-refract: rgba(97, 153, 255, .09);
-  --glass-shadow: 0 10px 30px rgba(0, 0, 0, .24), inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 rgba(5, 13, 29, .28);
-  --glass-hover-shadow: 0 16px 38px rgba(0, 8, 27, .35), 0 0 24px rgba(92, 147, 255, .08), inset 0 1px 0 rgba(210, 230, 255, .4), inset 0 -1px 0 rgba(5, 13, 29, .3);
+  --glass-shadow: 0 9px 24px #02061165, inset 0 1px 0 #a6c4f021;
+  --glass-hover-shadow: 0 14px 32px #02061187, inset 0 1px 0 #a6c4f03d;
+  --kanban-lane: #18263e;
+  --kanban-lane-shadow: 0 3px 14px #02061159;
 }
 body { position: relative; isolation: isolate; }
 body::before {
