@@ -38,6 +38,20 @@ test('daily and weekly reminders exclude submitted work and remain unique when r
  await db.exec('select app_private.weekly_report_reminders();select app_private.weekly_report_reminders()');
  const weekly=await rows("select user_id from notifications where id like 'wr_%'");assert.deepEqual(weekly.map(n=>n.user_id),[c]);
 });
+test("daily reminders include the developer and send one item per day",async()=>{
+ const d="00000000-0000-0000-0000-000000000009";
+ await db.query("insert into profiles values($1,$2)",[d,{id:d,role:"head",title:"developer",active:true}]);
+ try {
+  await db.exec(readFileSync(new URL("../supabase/migrations/20261118090400_report_reminders_for_leadership.sql",import.meta.url),"utf8"));
+  const today=(await rows("select msk_today() as day"))[0].day;
+  await db.exec("select daily_report_reminders();select daily_report_reminders()");
+  const weekday = new Date(today+"T12:00Z").getUTCDay();
+  assert.equal((await rows("select * from notifications where user_id=$1",[d])).length,Number(weekday>0&&weekday<6));
+ } finally {
+  await db.query("delete from notifications where user_id=$1",[d]);
+  await db.query("delete from profiles where id=$1",[d]);
+ }
+});
 test('deadline reminders cover co-assignees and do not duplicate when cron retries',async()=>{
  const today=(await rows('select msk_today() as day'))[0].day;
  await db.query('insert into tasks values($1,$2)',['t',{title:'Проверить материалы',status:'new',due:today,assigneeId:a,coAssigneeIds:[b]}]);

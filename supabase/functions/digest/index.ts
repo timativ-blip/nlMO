@@ -5,8 +5,9 @@
 // { dry: true } — вернуть тексты без отправки (для проверки).
 import { districtPublicationReminders, type Monitor } from './group-reminders.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { isPdTimeline } from '../_shared/media-timeline.ts';
-import { lastPdPost, pdRecent, pdWeekLine, type PdSnapshot } from './pd-summary.ts';
+import { isPdTimeline, type PdData } from '../_shared/media-timeline.ts';
+import { pdRecent, pdWeekLine } from './pd-summary.ts';
+import { pdReminderCandidates } from './pd-reminders.ts';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
 const admin = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -17,13 +18,10 @@ const today = () => dayFmt.format(new Date());
 const addDays = (d: string, n: number) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const weekday = (d: string) => (new Date(d + 'T12:00:00Z').getUTCDay() + 6) % 7; // 0 = пн
 const ddmm = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}`;
-/** Ключ ФИО для сопоставления с таблицей «Пиши-Делись»: фамилия + имя без учёта порядка, регистра и ё */
-const nameKey = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я\s-]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).sort().join(' ');
-const plural = (n: number, f: [string, string, string]) => { const a = Math.abs(n) % 100, b = a % 10; return a > 10 && a < 20 ? f[2] : b > 1 && b < 5 ? f[1] : b === 1 ? f[0] : f[2]; };
 const delta = (a: number, b: number) => (a === b ? '=' : a > b ? `↑${a - b}` : `↓${b - a}`);
 
 type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-type Pd = PdSnapshot;
+type Pd = PdData;
 
 async function secret(key: string) {
   const { data } = await admin.from('app_secrets').select('value').eq('key', key).single();
@@ -36,7 +34,8 @@ const rows = async (t: string) => ((await admin.from(t).select('data')).data ?? 
 
 async function send(items: { userId: string; id: string; text: string; link: string; kind: string }[], dry: boolean) {
   if (dry || !items.length) return;
-  await admin.from('notifications').upsert(items.map((n) => ({ id: n.id, user_id: n.userId, data: { id: n.id, userId: n.userId, text: n.text, at: new Date().toISOString(), read: false, link: n.link, kind: n.kind } })), { onConflict: 'id', ignoreDuplicates: true });
+  const { error } = await admin.from('notifications').upsert(items.map((n) => ({ id: n.id, user_id: n.userId, data: { id: n.id, userId: n.userId, text: n.text, at: new Date().toISOString(), read: false, link: n.link, kind: n.kind } })), { onConflict: 'id', ignoreDuplicates: true });
+  if (error) throw error;
 }
 
 async function weekly(dry: boolean) {
@@ -109,29 +108,10 @@ async function weekly(dry: boolean) {
 
 async function pdRemind(dry: boolean) {
   const [profiles, pd] = await Promise.all([rows('profiles'), loadPd()]);
-  if (!pd) return { skipped: 'нет данных «Пиши-Делись»' };
-  const t = today();
-  const asOf = lastPdPost(pd);
-  // The last publication date is not the spreadsheet's edit timestamp.
-  if (!pdRecent(pd, addDays(t, -2))) return { skipped: pd.sourceStatus === 'stale' ? 'не удалось обновить выгрузку' : `в выгрузке нет недавних публикаций; последняя дата: ${asOf || 'нет'}` };
-  const last = new Map<number, string>();
-  pd.posts.forEach((p) => { if ((last.get(p[4]) ?? '') < p[0]) last.set(p[4], p[0]); });
-  const byKey = new Map(pd.people.map((p, i) => [nameKey(p[0]), i]));
-  const out: { userId: string; id: string; text: string; link: string; kind: string }[] = [];
-  for (const p of profiles) {
-    if (p.active === false || p.pending || !['head','staff','coordinator'].includes(p.role)) continue;
-    const i = byKey.get(nameKey(p.name ?? ''));
-    if (i === undefined) continue; // человека нет в списках «Пиши-Делись»
-    const l = last.get(i);
-    const days = l ? Math.round((Date.parse(t) - Date.parse(l)) / 864e5) : 99;
-    if (days < 3) continue;
-    // не чаще раза в 3 дня: id привязан к трёхдневному окну
-    const slot = Math.floor(Date.parse(t) / (3 * 864e5));
-    out.push({ userId: p.id, id: `pd_${slot}_${p.id.slice(0, 8)}`, link: '#/media/brief', kind: 'media',
-      text: l ? `Вы не публиковали пост ${days} ${plural(days, ['день', 'дня', 'дней'])} (последний — ${ddmm(l)}). Загляните в «Что публикуем» — там шаблон от медиа-штаба.` : 'В «Пиши-Делись» пока нет ваших постов. Загляните в «Что публикуем» — там шаблон от медиа-штаба.' });
-  }
-  await send(out, dry);
-  return { sent: dry ? 0 : out.length, preview: dry ? out.map((x) => x.text) : undefined };
+  const { items, skipped } = pdReminderCandidates(pd, profiles as Parameters<typeof pdReminderCandidates>[1], today());
+  if (skipped) return { skipped };
+  await send(items, dry);
+  return { sent: dry ? 0 : items.length, preview: dry ? items.map((x) => x.text) : undefined };
 }
 
 async function groupRemind(dry: boolean) {
@@ -144,7 +124,8 @@ async function groupRemind(dry: boolean) {
 }
 
 Deno.serve(async (req) => {
-  if (req.headers.get('x-hook-secret') !== (await secret('hook_secret'))) return json({ error: 'forbidden' }, 403);
+  const hook = await secret('hook_secret');
+  if (!hook || req.headers.get('x-hook-secret') !== hook) return json({ error: 'forbidden' }, 403);
   try {
     const body = await req.json().catch(() => ({}));
     if (body.action === 'weekly') return json(await weekly(!!body.dry));
