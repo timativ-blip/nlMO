@@ -1,3 +1,4 @@
+import { TickTickSettings } from '../ui/TickTick';
 import { DeviceNotifications } from '../ui/DeviceNotifications';
 import { AppearanceSettings } from '../ui/appearance';
 import { Camera, CheckCircle2, Database, Download, KeyRound, MapPin, Plus, RefreshCw, Save, Send, Upload, Smartphone } from 'lucide-react';
@@ -195,6 +196,7 @@ export function SettingsPage() {
       <div className="grid g-2">
         <AppearanceSettings />
         <DeviceNotifications />
+        <TickTickSettings />
         <div className="card card-pad col" style={{ gap: 10 }}>
           <h2>Уведомления</h2>
           <p className="small muted" style={{ margin: 0 }}>Какие события показывать на сайте и отправлять на это устройство. Напоминания об отчётах входят в «Отчёты и сводки». Telegram подключается в профиле.</p>

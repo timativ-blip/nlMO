@@ -38,6 +38,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
     [end, setEnd] = useState(() =>
       meetingInput(new Date(Date.now() + 7200000).toISOString()),
     ),
+    [quantity, setQuantity] = useState(1),
     [purpose, setPurpose] = useState(""),
     [note, setNote] = useState(""),
     [busy, setBusy] = useState(false),
@@ -62,6 +63,10 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
     try {
       if (edit && (edit.name?.trim().length ?? 0) < 2)
         throw new Error("Название — от 2 до 120 символов.");
+      if (equipment && edit && (!Number.isInteger(edit.quantity ?? 1) || (edit.quantity ?? 1) < 1 || (edit.quantity ?? 1) > 100000))
+        throw new Error("Укажите целое количество от 1 до 100 000.");
+      if (equipment && reserve && (!Number.isInteger(quantity) || quantity < 1 || quantity > (reserve.quantity ?? 1)))
+        throw new Error("Укажите количество для бронирования.");
       if (reserve && purpose.trim().length < 3)
         throw new Error("Напишите цель бронирования — от 3 символов.");
       if (edit)
@@ -76,6 +81,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
           startsAt: meetingInstant(start),
           endsAt: meetingInstant(end),
           purpose,
+          quantity: equipment ? quantity : 1,
           requestId: crypto.randomUUID(),
         });
       else if (change)
@@ -102,6 +108,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
     setStart(next());
     setEnd(meetingInput(new Date(Date.now() + 7200000).toISOString()));
     setPurpose("");
+    setQuantity(1);
     setError("");
   };
   const visible = rows.filter(
@@ -128,7 +135,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
             icon={Plus}
             onClick={() => {
               setError("");
-              setEdit({ name: "", code: "", description: "", active: true });
+              setEdit({ name: "", code: "", description: "", active: true, quantity: 1 });
             }}
           >
             {equipment ? "Добавить оборудование" : "Добавить пространство"}
@@ -146,9 +153,10 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
       {hq.loading && <p role="status">Загружаю бронирования…</p>}
       <div className="resource-grid">
         {resources.map((r) => {
-          const held = rows.find(
+          const held = rows.filter(
             (b) => b.resource_id === r.id && b.status === "issued",
           );
+          const onHand = held.reduce((total, row) => total + (row.quantity ?? 1), 0);
           return (
             <article className="card resource-card" key={r.id}>
               <span className="resource-icon">
@@ -158,18 +166,19 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
                 <h2>{r.name}</h2>
                 {r.code && <p className="small muted">Инв. № {r.code}</p>}
                 <p className="muted">{r.description}</p>
-                {held && (
-                  <p
-                    className={
-                      Date.parse(held.ends_at) < Date.now()
-                        ? "danger-text"
-                        : "small"
-                    }
-                  >
-                    На руках: {name(held.borrower_id)} · до{" "}
-                    {meetingWhen(held.ends_at)}
-                  </p>
+                {equipment && (
+                  <dl className="inventory-details">
+                    {r.size && <div><dt>Размер</dt><dd>{r.size}</dd></div>}
+                    {r.color && <div><dt>Цвет</dt><dd>{r.color}</dd></div>}
+                    <div><dt>Всего</dt><dd>{r.quantity ?? 1} шт.</dd></div>
+                    <div><dt>Выдано</dt><dd>{onHand} шт.</dd></div>
+                  </dl>
                 )}
+                {held.map((booking) => (
+                  <p key={booking.id} className={Date.parse(booking.ends_at) < Date.now() ? "danger-text" : "small"}>
+                    На руках: {name(booking.borrower_id)} · {booking.quantity ?? 1} шт. · до {meetingWhen(booking.ends_at)}
+                  </p>
+                ))}
                 {!r.active && (
                   <span className="badge">Временно недоступно</span>
                 )}
@@ -178,7 +187,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
                 <Button
                   variant="primary"
                   icon={CalendarClock}
-                  disabled={!r.active || !!held}
+                  disabled={!r.active || onHand >= (r.quantity ?? 1)}
                   onClick={() => show(r)}
                 >
                   Забронировать
@@ -205,8 +214,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
           <Package size={30} />
           <h2>Каталог пока пуст</h2>
           <p className="muted">
-            Штаб добавляет каждую физическую вещь отдельно, с названием и
-            инвентарным номером.
+            {equipment ? "Штаб добавляет позиции с характеристиками и количеством." : "Штаб добавляет пространства для бронирования."}
           </p>
         </div>
       )}
@@ -257,7 +265,7 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
                   <p className="small muted">
                     {name(r.borrower_id)}
                     {r.district_id ? ` · округ ${r.district_id}` : ""} ·{" "}
-                    {r.purpose}
+                    {r.purpose}{equipment ? ` · ${r.quantity ?? 1} шт.` : ""}
                   </p>
                   {r.issue_note && (
                     <p className="small">При получении: {r.issue_note}</p>
@@ -376,6 +384,19 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
                   />
                 </label>
               )}
+              {equipment && (
+                <div className="grid g-2">
+                  <label className="field">Размер
+                    <input className="input" maxLength={80} value={edit.size ?? ""} onChange={(e) => setEdit({ ...edit, size: e.target.value })} />
+                  </label>
+                  <label className="field">Цвет
+                    <input className="input" maxLength={80} value={edit.color ?? ""} onChange={(e) => setEdit({ ...edit, color: e.target.value })} />
+                  </label>
+                  <label className="field">Количество, шт.
+                    <input className="input" type="number" min={1} max={100000} step={1} value={edit.quantity ?? 1} onChange={(e) => setEdit({ ...edit, quantity: Number(e.target.value) })} />
+                  </label>
+                </div>
+              )}
               <label className="field">
                 Описание
                 <textarea
@@ -422,6 +443,11 @@ export default function ResourcesPage({ kind }: { kind: Resource["kind"] }) {
                   />
                 </label>
               </div>
+              {equipment && (
+                <label className="field">Количество в брони, шт.
+                  <input className="input" type="number" min={1} max={reserve.quantity ?? 1} step={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+                </label>
+              )}
               <label className="field">
                 Для чего бронируете
                 <textarea

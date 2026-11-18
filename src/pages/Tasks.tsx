@@ -6,7 +6,8 @@ import { setTaskStatus, setUi, updateTask, useAppState } from '../data/store';
 import type { Priority, Task, TaskStatus } from '../data/types';
 import { PRIORITY_LABEL, STATUS_LABEL } from '../data/types';
 import { addDays, fmtDate, fmtDayMonth, relDue, todayISO, weekStart } from '../lib/date';
-import type { Route } from '../lib/router';
+import { go, type Route } from '../lib/router';
+import { TickTickTasks } from '../ui/TickTick';
 import { openNewTask, openTask } from '../ui/global';
 import { useLookup, useMe } from '../ui/hooks';
 import { Avatar, Button, Empty, PriorityTag, run, Segmented, TaskStatusBadges, toast } from '../ui/kit';
@@ -20,6 +21,10 @@ const EMPTY: Filters = { q: '', mine: false, district: '', assignee: '', status:
 const FKEY = 'kc-task-filters';
 
 export default function TasksPage({ route }: { route: Route }) {
+  return route.parts[1] === 'ticktick' ? <TickTickTasks /> : <TeamTasksPage route={route} />;
+}
+
+function TeamTasksPage({ route }: { route: Route }) {
   const s = useAppState();
   const me = useMe();
   const L = useLookup();
@@ -70,6 +75,7 @@ export default function TasksPage({ route }: { route: Route }) {
           <h1>Задачи</h1>
           <div className="sub">{me.role === 'member' ? 'Ваши задачи и задачи, где вы соисполнитель' : me.role === 'coordinator' ? `Задачи округа ${L.dname(me.districtId)}` : 'Все задачи области'}</div>
         </div>
+        <Button onClick={() => go("/tasks/ticktick")}>Из TickTick</Button>
         <Segmented label="Вид" value={view} onChange={(v) => setUi({ taskView: v })} options={[{ value: 'list', label: 'Список', icon: List }, { value: 'kanban', label: 'Канбан', icon: Columns3 }]} />
         {P.canCreateTask(me) && <><Button onClick={() => setWorkflowTab('launch')}>По округам</Button><Button onClick={() => setWorkflowTab('templates')}>Шаблоны и повторения</Button><Button variant="primary" icon={Plus} onClick={() => openNewTask()} className="hide-sm">Новая задача <span className="kbd" style={{ color: '#d9f3ef', borderColor: 'rgba(255,255,255,.3)', background: 'transparent' }}>N</span></Button></>}
       </div>

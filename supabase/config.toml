@@ -13,3 +13,7 @@ verify_jwt = false
 [functions.media-authors]
 # Verifies the session and current profile before forwarding to Google.
 verify_jwt = false
+
+[functions.ticktick]
+# OAuth callback and scheduled dispatch have their own checks. Browser calls verify the user's session.
+verify_jwt = false

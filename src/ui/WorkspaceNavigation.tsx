@@ -10,7 +10,7 @@ const GROUPS = [
   { id: "meetings", label: "Планёрки", pages: ["planning", "meetings"] },
   { id: "districts", label: "Округа", icon: MapPin, pages: ["team", "performance", "pulse", "analytics", "reports", "daily"] },
   { id: "content", label: "Контент", icon: Megaphone, pages: ["media"] },
-  { id: "hq", label: "Штаб", icon: Building2, pages: ["headquarters", "equipment"] },
+  { id: "hq", label: "Штаб", icon: Building2, pages: ["headquarters", "equipment", "budget"] },
 ];
 const KEY = "kc-nav-groups-v2";
 const PRIMARY = ["home", "tasks", "planning", "materials"];
