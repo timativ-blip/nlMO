@@ -12,10 +12,14 @@ export interface Resource {
   code: string;
   description: string;
   active: boolean;
+  size?: string;
+  color?: string;
+  quantity?: number;
 }
 export interface Reservation {
   id: string;
   resource_id: string;
+  quantity?: number;
   borrower_id: string;
   district_id: string | null;
   purpose: string;

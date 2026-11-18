@@ -71,7 +71,7 @@ before(async () => {
     "create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key);create schema extensions;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated,anon,service_role;grant execute on function auth.uid() to authenticated,anon,service_role;create schema net;create function net.http_post(url text,body jsonb,headers jsonb,timeout_milliseconds integer default 5000) returns bigint language sql as $$select 1::bigint$$;",
   );
   await db.exec(
-    "create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert on storage.objects to authenticated;",
+    "create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert on storage.objects to authenticated;",
   );
   const sql = readFileSync(
     new URL("../supabase/migrations/001_init.sql", import.meta.url),
@@ -91,15 +91,18 @@ before(async () => {
     "20261102100858_meeting_scheduling_notifications.sql",
     "20261102110233_meeting_minutes.sql",
     "20261111072559_headquarters_workspace.sql",
+    "20261118090000_inventory_quantities.sql",
+    "20261118090100_budget_expenses.sql",
+    "20261118090200_ticktick_sync.sql",
   ])
     await db.exec(
       readFileSync(
         new URL("../supabase/migrations/" + file, import.meta.url),
         "utf8",
-      ),
+      ).replace(/select cron\.schedule\([^;]+;/g, ""),
     );
   await db.exec(
-    "grant usage on schema public to authenticated,anon,service_role;grant select on public.profiles to authenticated;",
+    "grant usage on schema public to authenticated,anon,service_role;grant select,update on public.profiles to authenticated;",
   );
   for (const [name, id] of Object.entries(ids)) {
     await db.query("insert into auth.users values($1)", [id]);
@@ -127,11 +130,12 @@ before(async () => {
     "121",
     '{"id":"121","name":"Округ"}',
   ]);
+  await db.exec(readFileSync(new URL("../supabase/migrations/20261118090300_leadership_access.sql", import.meta.url), "utf8"));
 });
 beforeEach(async () => {
   await db.query("select set_config('request.jwt.claim.sub','',false)");
   await db.exec(
-    "truncate hq_private.requests,hq_private.ai_jobs,public.hq_reservations,public.hq_minutes_archive,notifications;",
+    "truncate hq_private.requests,hq_private.ai_jobs,public.hq_reservations,public.hq_minutes_archive,notifications,public.budget_expenses,public.budget_advances,public.budget_requests,public.budget_funds,public.ticktick_connections,public.ticktick_oauth_states,storage.objects;",
   );
   await db.query(
     'update profiles set data=data||\'{"active":true,"pending":false}\'::jsonb',
@@ -480,4 +484,90 @@ test("early pickup cannot occupy the preceding employees reserved interval", asy
     }),
     /действует его бронь/,
   );
+});
+
+test("inventory capacity is the maximum overlap; attributes and legacy single items are preserved", async () => {
+  const item = await mutation(ids.head, "resource_save", {
+    kind: "equipment", name: "Футболка", size: "L", color: "Синяя", quantity: 4,
+  });
+  assert.deepEqual([item.size, item.color, item.quantity], ["L", "Синяя", 4]);
+  const now = Date.now();
+  const starts = (h) => new Date(now + h*3600000).toISOString();
+  await reserve(item, ids.coord, { quantity: 2, startsAt: starts(1), endsAt: starts(2) });
+  await reserve(item, ids.other, { quantity: 2, startsAt: starts(2), endsAt: starts(3) });
+  const spanning = await reserve(item, ids.recipient, { quantity: 2, startsAt: starts(1), endsAt: starts(3) });
+  assert.equal(spanning.quantity, 2);
+  await assert.rejects(reserve(item, ids.other, { quantity: 1, startsAt: starts(2), endsAt: starts(2.5) }), /недостаточно/);
+  await assert.rejects(mutation(ids.head, "resource_save", { id: item.id, kind: "equipment", name: item.name, quantity: 3 }), /уже забронирована/);
+  assert.equal((await resource()).quantity, 1);
+  await assert.rejects(as(ids.coord, () => scalar("select hq_private.dispatch('reserve','{}')")), /permission denied/);
+});
+
+const budget = (who, action, body) => as(who, () => scalar(
+  "select public.budget($1,$2)", [action, { requestId: randomUUID(), ...body }],
+));
+const currentDay = () => scalar("select public.msk_today()");
+test("budget request, payment, receipt return, resubmit and approval respect roles and balance", async () => {
+  const fund = await budget(ids.head, "fund_save", { id: randomUUID(), kind: "district", districtId: "121", name: "Округ № 121", limitMinor: 2000000 });
+  const media = await budget(ids.head, "fund_save", { id: randomUUID(), kind: "media", name: "Медиа", limitMinor: 500000 });
+  assert.equal(await as(ids.coord, () => scalar("select count(*)::int from budget_funds")), 1);
+  await assert.rejects(budget(ids.coord, "request", { id: randomUUID(), fundId: media.id, amountMinor: 1000000, purpose: "Материалы" }), /недоступен/);
+  await assert.rejects(budget(ids.coord, "fund_save", { id: randomUUID() }), /руководство/);
+  const request = await budget(ids.coord, "request", { id: randomUUID(), fundId: fund.id, amountMinor: 1000000, purpose: "Материалы" });
+  assert.equal(request.status, "pending");
+  assert.equal(await as(ids.other, () => scalar("select count(*)::int from budget_requests")), 0);
+  assert.equal(await scalar("select issued_minor::int from budget_funds where id=$1", [fund.id]), 0);
+  const date = await currentDay();
+  await assert.rejects(budget(ids.coord, "mark_sent", { id: request.id, date }), /руководство/);
+  const sent = await budget(ids.head, "mark_sent", { id: request.id, date, note: "Перевод выполнен" });
+  assert.equal(sent.request_id, request.id);
+  assert.equal(await scalar("select issued_minor::int from budget_funds where id=$1", [fund.id]), 1000000);
+  await assert.rejects(budget(ids.head, "mark_sent", { id: request.id, date }), /уже принято/);
+  const over = await budget(ids.coord, "request", { id: randomUUID(), fundId: fund.id, amountMinor: 1100000, purpose: "Дополнительный расход" });
+  await assert.rejects(budget(ids.head, "mark_sent", { id: over.id, date }), /недостаточно/);
+
+  const expenseId = randomUUID();
+  const path = ids.coord + "/" + expenseId + "/" + randomUUID() + ".pdf";
+  const receipt = { id: expenseId, advanceId: sent.id, date, amountMinor: 1000000,
+    description: "Печать материалов", receiptPath: path, receiptName: "Чек.pdf" };
+  await assert.rejects(budget(ids.coord, "submit", receipt), /Прикрепите чек/);
+  await as(ids.coord, () => db.query("insert into storage.objects(bucket_id,name) values('budget-receipts',$1)", [path]));
+  let expense = await budget(ids.coord, "submit", receipt);
+  assert.equal(expense.status, "pending");
+  assert.equal(await as(ids.other, () => scalar("select count(*)::int from storage.objects where bucket_id='budget-receipts'")), 0);
+  assert.equal(await as(ids.head, () => scalar("select count(*)::int from storage.objects where bucket_id='budget-receipts'")), 1);
+  await assert.rejects(budget(ids.other, "review", { id: expenseId, version: 1, status: "accepted" }), /руководство|руководитель/);
+  expense = await budget(ids.head, "review", { id: expenseId, version: 1, status: "returned", note: "Уточните назначение" });
+  assert.equal(expense.status, "returned");
+  expense = await budget(ids.coord, "submit", { ...receipt, version: expense.version, description: "Печать материалов для встречи" });
+  expense = await budget(ids.head, "review", { id: expenseId, version: expense.version, status: "accepted" });
+  assert.equal(expense.status, "accepted");
+  await assert.rejects(budget(ids.coord, "submit", { ...receipt, version: expense.version }), /изменился/);
+});
+
+test("leadership titles normalize to head access; legacy role codes cannot be assigned", async () => {
+  const dev = randomUUID(), deputy = randomUUID();
+  for (const [id, title] of [[dev, "developer"], [deputy, "deputy"]]) {
+    await db.query("insert into auth.users values($1)", [id]);
+    await db.query("insert into profiles(id,data) values($1,$2)", [id, { id, name: "Доступ " + title, role: "staff", title, active: true }]);
+    assert.equal(await as(id, () => scalar("select my_role()")), "head");
+  }
+  await as(dev, () => db.query("update profiles set data=data||'{\"role\":\"staff\",\"title\":\"staff\"}' where id=$1", [ids.recipient]));
+  assert.equal(await scalar("select data->>'role' from profiles where id=$1", [ids.recipient]), "staff");
+  await db.query("update profiles set data=data||'{\"role\":\"coordinator\",\"title\":\"coordinator\"}' where id=$1", [ids.recipient]);
+  await assert.rejects(as(ids.coord, () => db.query("update profiles set data=data||'{\"title\":\"developer\"}' where id=$1", [ids.coord])), /Роль/);
+  await assert.rejects(db.query("update profiles set data=data||'{\"role\":\"member\",\"title\":\"party_member\"}' where id=$1", [dev]), /действующую роль/);
+});
+
+test("TickTick tokens, state and job claim are inaccessible to app users", async () => {
+  await assert.rejects(as(ids.head, () => scalar("select token_ciphertext from ticktick_connections")), /permission denied/);
+  await assert.rejects(as(ids.coord, () => scalar("select ticktick_claim_sync()")), /permission denied/);
+  await db.query("insert into ticktick_oauth_states(user_id,state_hash,expires_at,claimed) values($1,'one',now()+interval '1 minute',true)", [ids.coord]);
+  assert.equal(await scalar("select ticktick_finish_link('one','test-encrypted')"), true);
+  assert.equal(await scalar("select ticktick_finish_link('one','replayed')"), false);
+  await db.query("update ticktick_connections set projects=array['work'] where user_id=$1", [ids.coord]);
+  assert.equal(await scalar("select count(*)::int from ticktick_claim_sync()", []), 1);
+  assert.equal(await scalar("select count(*)::int from ticktick_claim_sync()", []), 0);
+  assert.equal(await scalar("select ticktick_disconnect($1)", [ids.coord]), "test-encrypted");
+  assert.equal(await scalar("select count(*)::int from ticktick_connections"), 0);
 });

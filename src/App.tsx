@@ -1,7 +1,7 @@
 import OfflineReports from './pages/OfflineReports';
 import { ReportDeliveryEngine, ReportDeliveryStatus, useReportOperations } from './ui/ReportDelivery';
 import { NotificationDelivery } from './ui/NotificationDelivery';
-import { Activity, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, MessageCircle, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
+import { Activity, Banknote, Building2, FolderOpen, Package, ListChecks, BarChart3, Bell, ClipboardCheck, Megaphone, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, FileText, FlaskConical, Home as HomeIcon, LogOut, MapPin, Menu, MessageCircle, Plus, Search, Settings, User as UserIcon, Users, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isOverdue } from './data/calc';
 import * as P from './data/perm';
@@ -20,6 +20,7 @@ import Home from './pages/Home';
 import PerformancePage from './pages/Performance';
 import MaterialsPage from './pages/Materials';
 import ResourcesPage from './pages/Resources';
+import BudgetPage from './pages/Budget';
 import PlanningPage from './pages/Planning';
 import ImportPage from './pages/Import';
 import { ProfilePage, SettingsPage } from './pages/Profile';
@@ -53,6 +54,7 @@ const NAV_ALL: { id: string; label: string; icon: typeof HomeIcon; staffOnly?: b
   { id: 'materials', label: 'Материалы', icon: FolderOpen },
   { id: 'headquarters', label: 'Бронь штаба', icon: Building2 },
   { id: 'equipment', label: 'Оборудование', icon: Package },
+  { id: 'budget', label: 'Бюджет', icon: Banknote },
 ];
 
 export default function App() {
@@ -119,8 +121,9 @@ function Workspace() {
     case 'performance': content = <PerformancePage />; break;
     case 'planning': content = <PlanningPage route={route} />; break;
     case 'materials': content = <MaterialsPage route={route} />; break;
-    case 'headquarters': content = <ResourcesPage kind="room" />; break;
-    case 'equipment': content = <ResourcesPage kind="equipment" />; break;
+    case 'headquarters': content = <ResourcesPage key="room" kind="room" />; break;
+    case 'equipment': content = <ResourcesPage key="equipment" kind="equipment" />; break;
+    case 'budget': content = <BudgetPage />; break;
     case 'messages': content = null; break;
     default: content = <Home />;
   }

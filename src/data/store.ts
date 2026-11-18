@@ -813,9 +813,8 @@ export async function resetPassword(userId: string) {
 export function setUserAdmin(id: string, patch: Partial<Pick<User, 'role' | 'title' | 'districtId' | 'active' | 'position' | 'pending'>>) {
   mutate((s, actor) => {
     const target = s.users.find((x) => x.id === id)!;
-    if (!P.canManageUser(actor, target)) deny('Роль и доступ меняют руководство области, а для участников своего округа — координатор.');
-    if (actor.role !== 'head' && ((patch.role && patch.role !== 'member') || (patch.districtId !== undefined && patch.districtId !== target.districtId) || (patch.title && !['member', 'party_member'].includes(patch.title))))
-      deny('Координатор может сделать человека участником или членом партии своего округа. Другие роли назначает руководство области.');
+    if (!P.canManageUser(actor, target)) deny('Роли и доступ меняет руководство.');
+    if (patch.role === 'member' || patch.title === 'member' || patch.title === 'party_member') deny('Выберите действующую роль.');
     if (id === actor.id && (patch.role && patch.role !== 'head' || patch.active === false)) throw new AppError('Нельзя снять с себя роль руководителя или отключить себя — попросите другого руководителя.');
     const u = s.users.find((x) => x.id === id)!;
     Object.assign(u, patch);

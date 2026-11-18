@@ -4,14 +4,12 @@ export type Role = 'head' | 'coordinator' | 'staff' | 'member';
 export type TeamRole = 'head' | 'developer' | 'deputy' | 'coordinator' | 'deputy_coordinator' | 'staff' | 'media' | 'member' | 'party_member';
 export const TEAM_ROLES: { key: TeamRole; label: string; access: Role; hint: string }[] = [
   { key: 'head', label: 'Руководитель области', access: 'head', hint: 'все права' },
-  { key: 'developer', label: 'Разработчик', access: 'head', hint: 'права руководителя' },
+  { key: 'developer', label: 'Разработчик', access: 'head', hint: 'все права, включая изменение ролей' },
   { key: 'deputy', label: 'Заместитель руководителя', access: 'head', hint: 'права руководителя' },
   { key: 'coordinator', label: 'Координатор округа', access: 'coordinator', hint: 'свой округ' },
   { key: 'deputy_coordinator', label: 'Заместитель координатора', access: 'coordinator', hint: 'права координатора в своём округе' },
   { key: 'staff', label: 'Штаб', access: 'staff', hint: 'вся область, без подтверждения результатов' },
   { key: 'media', label: 'Медиа-штаб', access: 'staff', hint: 'права штаба' },
-  { key: 'member', label: 'Участник команды', access: 'member', hint: 'свои задачи' },
-  { key: 'party_member', label: 'Член партии', access: 'member', hint: 'права участника' },
 ];
 export const teamRoleOf = (u: { role: Role; title?: TeamRole | null }): TeamRole => u.title ?? u.role;
 export const roleLabel = (u: { role: Role; title?: TeamRole | null }) => TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.label ?? ROLE_LABEL[u.role];
@@ -230,7 +228,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   head: 'Руководитель области',
   coordinator: 'Координатор округа',
   staff: 'Штаб',
-  member: 'Участник команды',
+  member: 'Архивный профиль',
 };
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {

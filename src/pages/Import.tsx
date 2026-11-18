@@ -45,7 +45,7 @@ function parseDate(v: unknown): string | null {
   return out;
 }
 // текст из таблицы → роль в команде (уровень доступа берётся из TEAM_ROLES)
-function teamRoleFrom(t: string): TeamRole {
+function teamRoleFrom(t: string): TeamRole | undefined {
   const x = t.trim().toLowerCase();
   if (/разраб/.test(x)) return 'developer';
   if (/зам.*координ/.test(x)) return 'deputy_coordinator';
@@ -54,8 +54,7 @@ function teamRoleFrom(t: string): TeamRole {
   if (/координ/.test(x)) return 'coordinator';
   if (/медиа|smm|смм/.test(x)) return 'media';
   if (/штаб|сотрудник/.test(x)) return 'staff';
-  if (/член/.test(x)) return 'party_member';
-  return 'member';
+  return undefined;
 }
 const PRIO_MAP: Record<string, Priority> = { низкий: 'low', обычный: 'normal', средний: 'normal', высокий: 'high', срочный: 'urgent' };
 
@@ -110,7 +109,8 @@ export default function ImportPage() {
       const bRaw = cell(r, 'birthday'); const birthday = parseDate(bRaw);
       if (bRaw && !birthday) errors.push('дата рождения не распознана (ДД.ММ.ГГГГ)');
       const title = teamRoleFrom(String(cell(r, 'role') ?? ''));
-      const role = TEAM_ROLES.find((x) => x.key === title)!.access;
+      const role = TEAM_ROLES.find((x) => x.key === title)?.access;
+      if (!role) errors.push('укажите одну из действующих ролей команды');
       dup = s.users.some((u) => (email && u.email.toLowerCase() === email.toLowerCase()) || (phone && phone.replace(/\D/g, '').length > 9 && u.phone.replace(/\D/g, '') === phone.replace(/\D/g, '')));
       const value: Partial<User> = { name, districtId, email, phone, role, title, position: String(cell(r, 'position') ?? ''), telegram: String(cell(r, 'telegram') ?? '') || undefined, birthday: birthday ?? undefined };
       return { idx, errors, dup, value, preview: [name, s.districts.find((d) => d.id === districtId)?.name ?? '—', email || phone || '—'] };

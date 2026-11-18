@@ -88,9 +88,7 @@ export function PersonAdminCard({ u }: { u: User }) {
   const L = useLookup();
   const [pw, setPw] = useState<string | null>(null);
   const head = me.role === 'head';
-  const coordCan = me.role === 'coordinator' && u.role === 'member' && u.districtId === me.districtId;
-  if (!head && !coordCan) return null;
-  if (u.id === me.id && !head) return null;
+  if (!head) return null;
   const reset = async () => {
     if (!confirm(`Сбросить пароль для ${u.name}? Старый пароль перестанет работать.`)) return;
     try { setPw(await resetPassword(u.id)); } catch (e) { toast((e as Error).message, 'error'); }
@@ -99,8 +97,8 @@ export function PersonAdminCard({ u }: { u: User }) {
     <div className="card card-pad col" style={{ gap: 12, marginTop: 16 }}>
       <h2 className="row"><ShieldCheck size={18} />Доступ и роль</h2>
       <div className="grid g-3" style={{ gap: 12 }}>
-        <Field label="Роль в команде" hint={head ? TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.hint : 'Координатор назначает участника или члена партии'}>
-          <Select value={teamRoleOf(u)} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value)!; run(() => setUserAdmin(u.id, { role: r.access, title: r.key as TeamRole }), 'Роль изменена'); }} options={TEAM_ROLES.filter((r) => r.access !== 'member' && (head || r.key === 'deputy_coordinator')).map((r) => ({ value: r.key, label: r.label }))} />
+        <Field label="Роль в команде" hint={TEAM_ROLES.find((r) => r.key === teamRoleOf(u))?.hint}>
+          <Select value={u.role === 'member' ? '' : teamRoleOf(u)} onChange={(e) => { const r = TEAM_ROLES.find((x) => x.key === e.target.value); if (!r) return; run(() => setUserAdmin(u.id, { role: r.access, title: r.key as TeamRole }), 'Роль изменена'); }} options={[...(u.role === 'member' ? [{ value: '', label: 'Выберите действующую роль' }] : []), ...TEAM_ROLES.map((r) => ({ value: r.key, label: r.label }))]} />
         </Field>
         {head && <Field label="Округ"><Select value={u.districtId ?? ''} onChange={(e) => run(() => setUserAdmin(u.id, { districtId: e.target.value || null }), 'Округ изменён')} options={[{ value: '', label: 'Вся область' }, ...s.districts.map((d) => ({ value: d.id, label: `${d.num ?? ''} ${d.name}`.trim() }))]} /></Field>}
         <Field label="Доступ"><Select value={u.active ? 'on' : 'off'} onChange={(e) => run(() => setUserAdmin(u.id, { active: e.target.value === 'on', pending: false }), e.target.value === 'on' ? 'Доступ включён' : 'Доступ отключён — человек больше не сможет войти')} options={[{ value: 'on', label: 'Активен' }, { value: 'off', label: 'Отключён' }]} /></Field>
