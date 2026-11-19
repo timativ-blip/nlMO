@@ -22,13 +22,14 @@ export function AnimatedNumber({ value, precision = 0, suffix = '' }: { value: n
   return <span aria-label={format(value)}><span aria-hidden>{format(display)}</span></span>;
 }
 
-export function ProgressRing({ value, label = 'плана', suffix = '%' }: { value: number | null; label?: string; suffix?: string }) {
+export function ProgressRing({ value, label = 'плана', suffix = '%', onPick }: { value: number | null; label?: string; suffix?: string; onPick?: () => void }) {
   const length = 2 * Math.PI * 46;
   const valid = value !== null && Number.isFinite(value) ? value : null;
-  return <div className="progress-ring" role="img" aria-label={valid === null ? `${label}: нет данных` : `${Math.round(valid * 100)}${suffix} ${label}`}>
+  const Ring = onPick ? 'button' : 'div';
+  return <Ring className={`progress-ring ${onPick ? 'metric-graphic' : ''}`} {...(onPick ? { type: 'button' as const, onClick: onPick, title: 'Открыть исходные записи' } : { role: 'img' })} aria-label={valid === null ? `${label}: нет данных` : `${Math.round(valid * 100)}${suffix} ${label}`}>
     <svg viewBox="0 0 112 112" aria-hidden><circle className="ring-track" cx="56" cy="56" r="46" />{valid !== null && valid > 0 && <circle className="ring-value" cx="56" cy="56" r="46" strokeDasharray={length} strokeDashoffset={length * (1 - Math.min(1, Math.max(0, valid)))} />}</svg>
     <span><b>{valid === null ? '—' : <AnimatedNumber value={valid * 100} suffix={suffix} />}</b><small>{label}</small></span>
-  </div>;
+  </Ring>;
 }
 
 export function Sparkline({ values }: { values: number[] }) {
@@ -93,7 +94,7 @@ export function DonutChart({ segments, label = 'задач' }: { segments: Donut
         return s.value ? <circle key={s.id} className="donut-segment" cx="60" cy="60" r="46" fill="none" stroke={s.color} strokeWidth="12" strokeDasharray={`${Math.max(0,arc-3)} ${length}`} strokeDashoffset={-before} transform="rotate(-90 60 60)" /> : null;
       })}</svg><span><b><AnimatedNumber value={total} /></b><small>{total ? label : 'нет данных'}</small></span>
     </div>
-    <div className="donut-legend">{segments.map((s) => <button type="button" key={s.id} onClick={s.onClick} disabled={!s.onClick || !s.value} className="donut-key" aria-label={`${s.label}: ${s.value}${s.onClick && s.value ? '. Открыть задачи' : ''}`}>
+    <div className="donut-legend">{segments.map((s) => <button type="button" key={s.id} onClick={s.onClick} disabled={!s.onClick} className="donut-key" aria-label={`${s.label}: ${s.value}${s.onClick ? '. Открыть задачи' : ''}`}>
       <i style={{ background: s.color }} /><span>{s.label}</span><b>{s.value}</b><small>{total ? Math.round(s.value/total*100) : 0}%</small>
     </button>)}</div>
   </div>;
@@ -110,7 +111,7 @@ export function ActivityHeatmap<T extends { day: string; future: boolean; count:
   const max = Math.max(1,...days.map((d) => d.count));
   return <div className="activity-heatmap">
     <div className="heat-months"><span>{fmtDayMonth(days[0].day)}</span><span>Последние 12 недель</span><span>{fmtDayMonth(days[days.length-1].day)}</span></div>
-    <div className="heat-body"><div className="heat-days" aria-hidden>{['Пн','','Ср','','Пт','','Вс'].map((d,i) => <span key={i}>{d}</span>)}</div><div className="heat-cells">{days.map((d) => <button key={d.day} type="button" disabled={d.future || !d.count} onClick={() => onPick(d)} className={`heat-cell ${d.future ? 'future' : ''}`} style={{ '--heat': d.count/max } as CSSProperties}
+    <div className="heat-body"><div className="heat-days" aria-hidden>{['Пн','','Ср','','Пт','','Вс'].map((d,i) => <span key={i}>{d}</span>)}</div><div className="heat-cells">{days.map((d) => <button key={d.day} type="button" disabled={d.future} onClick={() => onPick(d)} className={`heat-cell ${d.future ? 'future' : ''}`} style={{ '--heat': d.count/max } as CSSProperties}
       title={`${fmtDayMonth(d.day)}: ${d.count} подтверждённых результатов`} aria-label={`${fmtDayMonth(d.day)}: ${d.count} подтверждённых результатов`} />)}</div></div>
     <div className="heat-scale"><span>Меньше</span>{[0,.15,.45,.7,1].map((n) => <i key={n} style={{ '--heat': n } as CSSProperties} />)}<span>Больше</span></div>
   </div>;

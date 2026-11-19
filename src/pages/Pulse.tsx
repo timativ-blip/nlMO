@@ -1,20 +1,22 @@
-import { silentGroupCount, TELEGRAM_ASSESSMENT_NOTE } from '../../supabase/functions/_shared/media-policy';
+import { publicationAssessment, silentGroupCount, TELEGRAM_ASSESSMENT_NOTE } from '../../supabase/functions/_shared/media-policy';
 // «Пульс области»: зашёл — и сразу видно, где хорошо и где плохо.
 // Источники: задачи (база), «Пиши-Делись» (media-pd), партийные группы (media-groups), ежедневные отчёты.
 import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { isOverdue, pct, rateDistricts, weeklyTrend } from '../data/calc';
+import { isOverdue, kpis, pct, rateDistricts, weeklyTrend } from '../data/calc';
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
 import type { PdPlan } from '../data/types';
 import { addDays, fmtDayMonth, getPeriod, monthEnd, plural, todayISO, WD_SHORT, weekday, weekStart } from '../lib/date';
 import { go } from '../lib/router';
 import { useLookup, useMe } from '../ui/hooks';
+import { openRecords, type RecordsSpec } from '../ui/global';
+import { dailyCoverage, dailyRecord, MetricValue, planRecords, publicationRecords } from '../ui/metricSources';
 import { Empty, Modal, Segmented } from '../ui/kit';
 import { compute, PostCard, useJson, type GroupsData, type PdData } from './Media';
 
 type Light = 'green' | 'yellow' | 'red' | 'none';
-interface Signal { key: string; label: string; value: string; light: Light; alert?: string; link: string }
+interface Signal { key: string; label: string; value: string; light: Light; alert?: string; link: string; records?: RecordsSpec }
 const LIGHT_TXT: Record<Light, string> = { green: 'в норме', yellow: 'внимание', red: 'проблема', none: 'нет данных' };
 const lvl = (v: number | null, g: number, y: number, lowerIsBetter = false): Light => {
   if (v === null || Number.isNaN(v)) return 'none';
@@ -26,6 +28,7 @@ const heatBg = (t: number | null) => (t === null ? '#eceae4' : `rgba(20,168,156,
 /** Сигналы по округам — общие для страницы «Пульс» и короткой версии на главной */
 export function usePulse() {
   const s = useAppState();
+  const me = useMe();
   const pd = useJson<PdData>('media-pd', 60000);
   const gr = useJson<GroupsData>('media-groups', 5 * 60000);
   const today = todayISO();
@@ -42,25 +45,32 @@ export function usePulse() {
   const rows = useMemo(() => s.districts.map((d) => {
     const r = dist.find((x) => x.districtId === d.id);
     const g = A?.groups.find((x) => x.id === d.id);
-    const overdue = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t)).length;
+    const overdueTasks = s.tasks.filter((t) => t.districtId === d.id && isOverdue(t) && P.canSeeTask(me,t));
+    const overdue = overdueTasks.length;
     const writing = g && g.roster ? g.authors / g.roster : null;
     const planPosts = s.pdPlan ? pdPlanFor(s.pdPlan, d.id) * pdShare : 0;
     const pdPlanPct = g && planPosts ? g.posts / planPosts : null;
     const silent = gr.data && gr.data.sourceStatus !== 'stale' ? silentGroupCount(gr.data.groups.filter((x) => x.okrug === d.id)) : null;
-    const req = s.users.filter((u) => u.active && u.districtId === d.id && P.mustReportDaily(u));
+    const postSources = pd.data && A ? publicationRecords('Публикации: '+d.name,pd.data,A.P.filter(p=>pd.data!.people[p[4]]?.[1]===d.id)) : undefined;
+    const writingRecords = g ? {title:'Авторы: '+d.name,rule:'Авторы с хотя бы одной публикацией за отображаемый месяц, включая незачтённые публикации.',sections:[
+      {title:'Пишут',items:g.mem.filter(a=>a.posts>0).map(a=>({id:String(a.i),title:a.name,value:String(a.posts),href:'/media/aut?month='+pdMonth+'&author='+a.i}))},
+      {title:'Не пишут',items:g.mem.filter(a=>!a.posts).map(a=>({id:String(a.i),title:a.name,value:'0',href:'/media/aut?month='+pdMonth+'&author='+a.i}))},
+    ]} : undefined;
+    const groupRecords = silent !== null && gr.data ? {title:'Группы ВК без публикаций: '+d.name,rule:'На оценку влияют только группы ВК без публикаций 4 дня и больше.',items:gr.data.groups.filter(x=>x.okrug===d.id && publicationAssessment(x.vk,'vk').cls==='bad').map((x,i)=>({id:String(i),title:x.city,detail:x.vk?.last?'Последняя публикация: '+fmtDayMonth(x.vk.last.slice(0,10)):'Нет публикаций',href:'/media/groups'}))} : undefined;
+    const req = s.users.filter((u) => u.active && u.districtId === d.id && P.mustReportDaily(u) && P.canSeeDaily(me,u));
     const dailyShare = req.length ? req.reduce((n, u) => n + workdays.filter((wd) => s.dailyReports.some((x) => x.userId === u.id && x.day === wd)).length, 0) / (req.length * workdays.length) : null;
     const signals: Signal[] = [
-      { key: 'plan', label: 'План задач', value: r && r.assigned.length ? pct(r.plan) : '—', light: r && r.assigned.length ? lvl(r.plan, 0.8, 0.5) : 'none', alert: r && r.assigned.length && r.plan < 0.5 ? `план задач выполнен на ${pct(r.plan)}` : undefined, link: `/team/districts/${d.id}` },
-      { key: 'overdue', label: 'Просрочки', value: String(overdue), light: lvl(overdue, 0, 3, true), alert: overdue > 3 ? `${overdue} ${plural(overdue, ['просроченная задача', 'просроченные задачи', 'просроченных задач'])}` : undefined, link: `/tasks?overdue=1&district=${d.id}` },
-      { key: 'pdplan', label: 'План постов', value: pdPlanPct === null ? '—' : pct(pdPlanPct), light: lvl(pdPlanPct, 0.9, 0.6), alert: pdPlanPct !== null && pdPlanPct < 0.6 ? `план постов «Пиши-Делись» выполнен на ${pct(pdPlanPct)}` : undefined, link: '/media/okr' },
-      { key: 'writing', label: 'Пишут в ПД', value: writing === null ? '—' : pct(writing), light: lvl(writing, 0.7, 0.5), alert: writing !== null && writing < 0.5 ? `пишут только ${pct(writing)} из списка` : undefined, link: '/media/idle' },
-      { key: 'groups', label: 'Молчат группы ВК', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа ВК молчит', 'группы ВК молчат', 'групп ВК молчат'])} 4+ дней` : undefined, link: '/media/groups' },
-      { key: 'daily', label: 'Отчёты дня', value: dailyShare === null ? '—' : pct(dailyShare), light: lvl(dailyShare, 0.8, 0.5), alert: dailyShare !== null && dailyShare < 0.5 ? `ежедневные отчёты сданы на ${pct(dailyShare)} за 5 рабочих дней` : undefined, link: '/daily' },
+      { key: 'plan', label: 'План задач', value: r && r.assigned.length ? pct(r.plan) : '—', light: r && r.assigned.length ? lvl(r.plan, 0.8, 0.5) : 'none', alert: r && r.assigned.length && r.plan < 0.5 ? `план задач выполнен на ${pct(r.plan)}` : undefined, link: `/team/districts/${d.id}`, records:r ? planRecords('План задач: '+d.name,r.facts) : undefined },
+      { key: 'overdue', label: 'Просрочки', value: String(overdue), light: lvl(overdue, 0, 3, true), alert: overdue > 3 ? `${overdue} ${plural(overdue, ['просроченная задача', 'просроченные задачи', 'просроченных задач'])}` : undefined, link: `/tasks?overdue=1&district=${d.id}`, records:{title:'Просрочки: '+d.name,tasks:overdueTasks} },
+      { key: 'pdplan', label: 'План постов', value: pdPlanPct === null ? '—' : pct(pdPlanPct), light: lvl(pdPlanPct, 0.9, 0.6), alert: pdPlanPct !== null && pdPlanPct < 0.6 ? `план постов «Пиши-Делись» выполнен на ${pct(pdPlanPct)}` : undefined, link: '/media/okr', records:postSources ? {...postSources,rule:`Посты округа за месяц ${pdMonth}; план на прошедшую часть месяца — ${planPosts.toLocaleString('ru-RU',{maximumFractionDigits:2})}.`} : undefined },
+      { key: 'writing', label: 'Пишут в ПД', value: writing === null ? '—' : pct(writing), light: lvl(writing, 0.7, 0.5), alert: writing !== null && writing < 0.5 ? `пишут только ${pct(writing)} из списка` : undefined, link: '/media/idle', records:writingRecords },
+      { key: 'groups', label: 'Молчат группы ВК', value: silent === null ? '…' : String(silent), light: silent === null ? 'none' : lvl(silent, 0, 1, true), alert: silent !== null && silent >= 2 ? `${silent} ${plural(silent, ['группа ВК молчит', 'группы ВК молчат', 'групп ВК молчат'])} 4+ дней` : undefined, link: '/media/groups', records:groupRecords },
+      { key: 'daily', label: 'Отчёты дня', value: dailyShare === null ? '—' : pct(dailyShare), light: lvl(dailyShare, 0.8, 0.5), alert: dailyShare !== null && dailyShare < 0.5 ? `ежедневные отчёты сданы на ${pct(dailyShare)} за 5 рабочих дней` : undefined, link: '/daily', records:{...dailyCoverage(me,req,workdays,s.dailyReports),title:'Отчёты дня: '+d.name} },
     ];
     const reds = signals.filter((x) => x.light === 'red').length, yellows = signals.filter((x) => x.light === 'yellow').length;
     const overall: Light = reds >= 2 ? 'red' : reds || yellows >= 2 ? 'yellow' : signals.every((x) => x.light === 'none') ? 'none' : 'green';
     return { d, signals, overall, reds, yellows };
-  }), [s, dist, A, gr.data, workdays, pdShare]);
+  }), [s, me, dist, A, pd.data, pdMonth, gr.data, workdays, pdShare]);
 
   const alerts = rows.flatMap((r) => r.signals.filter((x) => x.alert).map((x) => ({ d: r.d, x }))).sort((a, b) => ORDER[a.x.light] - ORDER[b.x.light]);
   const counts = { green: 0, yellow: 0, red: 0, none: 0 } as Record<Light, number>;
@@ -75,7 +85,7 @@ export function AlertList({ alerts, limit }: { alerts: ReturnType<typeof usePuls
   const L = useLookup();
   if (!alerts.length) return <Empty icon={CheckCircle2} title="Тревог нет" text="Все округа в норме по задачам, «Пиши-Делись», группам ВК и отчётам." />;
   return <>{alerts.slice(0, limit).map(({ d, x }, k) => (
-    <button key={k} className="list-item" onClick={() => go(x.link)}>
+    <button key={k} className="list-item" onClick={() => x.records ? openRecords(x.records) : go(x.link)}>
       <span className={`ldot ${x.light}`} />
       <span className="grow"><b>{L.dname(d.id)}</b>: {x.alert}</span>
       <ArrowRight size={15} className="muted" />
@@ -117,10 +127,10 @@ export default function PulsePage() {
 
       <div className="lights">
         {rows.map((r) => (
-          <button key={r.d.id} className={`light-card l-${r.overall}`} onClick={() => go(`/team/districts/${r.d.id}`)}>
-            <div className="row"><span className={`ldot ${r.overall}`} /><b className="grow ellipsis">{L.dname(r.d.id)}</b><span className="small">{LIGHT_TXT[r.overall]}</span></div>
-            <div className="light-signals">{r.signals.map((x) => <span key={x.key} className={`sig ${x.light}`} title={`${x.label}: ${x.value}`}><i />{x.label}<b>{x.value}</b></span>)}</div>
-          </button>
+          <article key={r.d.id} className={`light-card l-${r.overall}`}>
+            <button type="button" className="row pulse-district-link" onClick={() => go(`/team/districts/${r.d.id}`)}><span className={`ldot ${r.overall}`} /><b className="grow ellipsis">{L.dname(r.d.id)}</b><span className="small">{LIGHT_TXT[r.overall]}</span></button>
+            <div className="light-signals">{r.signals.map((x) => <button key={x.key} type="button" className={`sig ${x.light} pulse-signal`} title={`${x.label}: ${x.value} · открыть источник`} onClick={()=>x.records?openRecords(x.records):go(x.link)}><i />{x.label}<b>{x.value}</b></button>)}</div>
+          </article>
         ))}
       </div>
 
@@ -176,7 +186,7 @@ function HeatOkrugWeek({ pd }: { pd: PdData | null }) {
           <tbody>{grid.map((r) => (
             <tr key={r.d.id} className="clickable" onClick={() => go(`/team/districts/${r.d.id}`)}>
               <td className="hg-name ellipsis">{L.dname(r.d.id)}</td>
-              {r.vals.map((v, i) => <td key={i}><span className="hg-val" style={{ background: heatBg(v === null ? null : m === 'tasks' ? v / 1.1 : v / max), color: v !== null && (m === 'tasks' ? v / 1.1 : v / max) > 0.55 ? '#fff' : undefined }} title={`${L.dname(r.d.id)}, неделя с ${fmtDayMonth(weeks[i])}: ${r.txt[i]}`}>{r.txt[i]}</span></td>)}
+              {r.vals.map((v, i) => <td key={i}><span className="hg-val" style={{ background: heatBg(v === null ? null : m === 'tasks' ? v / 1.1 : v / max), color: v !== null && (m === 'tasks' ? v / 1.1 : v / max) > 0.55 ? '#fff' : undefined }} title={`${L.dname(r.d.id)}, неделя с ${fmtDayMonth(weeks[i])}: ${r.txt[i]}`}>{m === 'tasks' ? <MetricValue records={()=>planRecords('План за неделю: '+r.d.name,kpis(s,weeks[i],addDays(weeks[i],6),r.d.id).facts)}>{r.txt[i]}</MetricValue> : pd ? <MetricValue records={()=>publicationRecords('Посты за неделю: '+r.d.name,pd,pd.posts.filter(p=>pd.people[p[4]]?.[1]===r.d.id && weekStart(p[0])===weeks[i]))}>{r.txt[i]}</MetricValue>:r.txt[i]}</span></td>)}
             </tr>
           ))}</tbody>
         </table>
@@ -365,7 +375,7 @@ function HelpSummary() {
   const cats = [...HELP_CATS, { key: 'other', label: 'Другое', re: /$^/ }].map((c) => {
     const hit = items.filter((x) => (c.key === 'other' ? !x.cats.length : x.cats.includes(c.key)));
     const byOkr = new Map<string, number>(); hit.forEach((x) => byOkr.set(okrugOf(x), (byOkr.get(okrugOf(x)) ?? 0) + 1));
-    return { ...c, n: hit.length, repeat: [...byOkr.entries()].filter(([, n]) => n >= 3).map(([k]) => k) };
+    return { ...c, n: hit.length, hit, repeat: [...byOkr.entries()].filter(([, n]) => n >= 3).map(([k]) => k) };
   }).filter((c) => c.n).sort((a, b) => b.n - a.n);
   const max = Math.max(...cats.map((c) => c.n));
   return (
@@ -386,7 +396,7 @@ function HelpSummary() {
         <div className="card-body col" style={{ gap: 10 }}>
           {cats.map((c) => (
             <div key={c.key} className="col" style={{ gap: 4 }}>
-              <div className="row"><span className="grow">{c.label}</span><b className="num">{c.n}</b></div>
+              <div className="row"><span className="grow">{c.label}</span><MetricValue className="num" records={{title:c.label,items:c.hit.map(x=>({...dailyRecord(x.r,x.u),detail:`${fmtDayMonth(x.r.day)} · ${x.r.problems}`}))}}>{c.n}</MetricValue></div>
               <span className="help-bar"><i style={{ width: `${(c.n / max) * 100}%` }} /></span>
               {c.repeat.length > 0 && <span className="small" style={{ color: 'var(--c-review)' }}>повторяется: {c.repeat.map((k) => (k ? L.dname(k) : 'штаб')).join(', ')}</span>}
             </div>

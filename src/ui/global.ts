@@ -3,7 +3,21 @@ import { useSyncExternalStore } from 'react';
 import type { Task } from '../data/types';
 import type { TaskInput } from '../data/store';
 
-export interface RecordsSpec { title: string; rule?: string; tasks: Task[]; cellValue?: (t: Task) => string }
+export interface SourceRecord {
+  id: string;
+  title: string;
+  detail?: string;
+  value?: string;
+  href?: string;
+  externalHref?: string;
+}
+export interface RecordSection {
+  title: string;
+  tasks?: Task[];
+  cellValue?: (t: Task) => string;
+  items?: SourceRecord[];
+}
+export interface RecordsSpec extends RecordSection { rule?: string; sections?: RecordSection[] }
 type GlobalState = { taskId: string | null; newTask: Partial<TaskInput> | null; records: RecordsSpec | null; eventId: string | null; newEvent: { date?: string; districtId?: string } | null };
 
 let g: GlobalState = { taskId: null, newTask: null, records: null, eventId: null, newEvent: null };

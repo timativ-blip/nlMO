@@ -21,6 +21,7 @@ import { meetingWhen, meetingPhase } from "../lib/meeting-time";
 import { go } from "../lib/router";
 import { useMe, usePeriod } from "../ui/hooks";
 import { openRecords } from "../ui/global";
+import { taskShare } from "../ui/metricSources";
 import { ComparisonColumns } from "../ui/DashboardVisuals";
 import { ProgressRing } from "../ui/charts";
 import { Button } from "../ui/kit";
@@ -50,6 +51,7 @@ export default function Home() {
   const snapshot = taskSnapshot(visible, period.from, period.to);
   const cohort = snapshot.flatMap(group => group.tasks);
   const completed = snapshot.find(group => group.id === 'done')!.tasks;
+  const openCompletion = () => openRecords(taskShare('Выполнение задач', cohort, completed, 'Задачи со сроком в выбранном периоде. Отменённые исключены.'));
   const trend = useMemo(() => periodTrend(visible, period.from, period.to), [visible, period.from, period.to]);
   return (
     <>
@@ -62,8 +64,8 @@ export default function Home() {
       </div>
       <div className="dashboard-grid home-dashboard">
         <section className="card dashboard-card dashboard-completion">
-          <div className="dashboard-card-head"><span className="dashboard-icon"><Target size={17}/></span><h2>Выполнение задач</h2><button type="button" className="dashboard-detail" onClick={() => openRecords({title:'Задачи выбранного периода',tasks:cohort,rule:'Задачи со сроком в выбранном периоде. Отменённые задачи исключены. Выполнены только подтверждённые результаты.'})} aria-label="Открыть задачи выбранного периода"><ArrowUpRight size={17}/></button></div>
-          <ProgressRing value={cohort.length ? completed.length / cohort.length : null} label="выполнено"/>
+          <div className="dashboard-card-head"><span className="dashboard-icon"><Target size={17}/></span><h2>Выполнение задач</h2><button type="button" className="dashboard-detail" onClick={openCompletion} aria-label="Открыть задачи выбранного периода"><ArrowUpRight size={17}/></button></div>
+          <ProgressRing value={cohort.length ? completed.length / cohort.length : null} label="выполнено" onPick={openCompletion}/>
           <p className="dashboard-caption">{cohort.length ? `${completed.length} из ${cohort.length} задач подтверждено` : 'За выбранный период задач пока нет'}</p>
           <span className="dashboard-period">{period.label}</span>
         </section>
@@ -72,20 +74,18 @@ export default function Home() {
           <p className="dashboard-caption">На сегодня · независимо от периода</p>
           <div className="hq-home-counters">
           {[
-            { n: due.length, label: "На сегодня", path: "/tasks?due=today" },
+            { tasks: due, label: "На сегодня" },
             {
-              n: overdue.length,
+              tasks: overdue,
               label: "Просрочено",
-              path: "/tasks?overdue=1",
             },
             {
-              n: review.length,
+              tasks: review,
               label: "Проверить",
-              path: "/tasks?status=review",
             },
           ].map((x) => (
-            <button key={x.label} onClick={() => go(x.path)} className={x.label === 'Просрочено' && x.n ? 'counter-alert' : ''}>
-              <b>{x.n}</b>
+            <button key={x.label} onClick={() => openRecords({title:x.label,tasks:x.tasks,rule:'Текущая очередь работы, независимо от выбранного периода.'})} className={x.label === 'Просрочено' && x.tasks.length ? 'counter-alert' : ''}>
+              <b>{x.tasks.length}</b>
               <span>{x.label}</span>
               <ArrowUpRight size={14} aria-hidden/>
             </button>

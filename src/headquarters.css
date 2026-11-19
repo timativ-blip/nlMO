@@ -797,6 +797,29 @@ body::before {
 .sidebar-collapsed .sidebar .nav-group-items .nav-item { height: 39px; }
 .sidebar-collapsed .sidebar .nav-group-items .nav-item > svg { width: 18px; height: 18px; }
 .sidebar-collapsed .nav-group + .nav-group { border: 0; padding-top: 0; }
+.metric-value { display: inline-flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; cursor: pointer; text-align: inherit; }
+.metric-value > svg { color: var(--accent-text); flex: none; }
+.metric-value:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.metric-value:focus-visible, .metric-record-item:focus-visible, .metric-graphic:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.metric-graphic { display: grid; place-items: center; width: 100%; background: none; border: 0; color: inherit; font: inherit; padding: 0; border-radius: 10px; cursor: pointer; }
+.metric-graphic:hover { background: var(--accent-soft); }
+.metric-records, .metric-record-section { gap: 12px; }
+.metric-record-section + .metric-record-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.metric-record-section h3 { margin: 0; overflow-wrap: anywhere; }
+.metric-record-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font: inherit; border-radius: 10px; }
+button.metric-record-item { cursor: pointer; }
+button.metric-record-item:hover { border-color: var(--teal); }
+a.metric-record-item { text-decoration: none; }
+a.metric-record-item:hover { border-color: var(--teal); }
+.metric-record-item .grow { min-width: 0; overflow-wrap: anywhere; }
+.metric-record-item small { display: block; margin-top: 4px; color: var(--muted); }
+.metric-record-item strong, .metric-record-item svg { flex: none; }
+.metric-report-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+button.hg-cell { border: 0; cursor: pointer; padding: 0; }
+button.hg-cell:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.pulse-district-link, .pulse-signal { width: 100%; background: none; border: 0; padding: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; border-radius: 4px; }
+.pulse-district-link:hover, .pulse-signal:hover { color: var(--accent-text); text-decoration: underline; }
+.budget-expense.metric-selected { background: var(--accent-soft); outline: 1px solid var(--teal); border-radius: 10px; padding: 12px; }
 .topbar { background: color-mix(in srgb, var(--bg) 85%, transparent); border-color: var(--border); padding: 0 32px; gap: 11px; }
 .section-heading { display: flex; align-items: center; gap: 12px; min-width: 0; margin-right: auto; }
 .section-heading > span, .section-heading > b { font-size: 11px; }

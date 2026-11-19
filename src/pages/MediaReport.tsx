@@ -1,12 +1,14 @@
 import { Copy, Download, ImageDown, Search, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { PdData } from '../data/media-types';
-import { buildMediaReport, mediaReportCsv, mediaReportSvg, mediaReportText, reportDate, reportDelta, reportWeekBefore, postCount, authorCount } from '../data/media-report';
+import { buildMediaReport, mediaReportCsv, mediaReportSvg, mediaReportText, reportDate, reportDelta, reportWeekBefore, postCount, authorCount, type ReportRow } from '../data/media-report';
 import { SEASON_11 } from '../data/media-season';
 import { fmtDate, fmtStamp, todayISO } from '../lib/date';
 import { go } from '../lib/router';
 import { Button, Empty, toast } from '../ui/kit';
 import { MediaAuthorForm } from './MediaAuthorForm';
+import { MetricValue, publicationRecords } from '../ui/metricSources';
+import type { RecordsSpec } from '../ui/global';
 
 function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob), a = document.createElement('a');
@@ -30,6 +32,19 @@ export default function MediaReport({ data, stale }: { data: PdData; stale: bool
   const [q, setQ] = useState(''), [group, setGroup] = useState(''), [pngBusy, setPngBusy] = useState(false), [showText, setShowText] = useState(false);
   const compareTo = comparison || reportWeekBefore(to), valid = compareTo < to;
   const report = useMemo(() => buildMediaReport({ ...data, sourceStatus: stale ? 'stale' : data.sourceStatus }, to, valid ? compareTo : reportWeekBefore(to)), [data, to, compareTo, stale, valid]);
+  const postsFor = (row: ReportRow) => {
+    const indices = new Set(row.authors.map(a => a.index));
+    return data.posts.filter(p=>p[0]>=report.from&&p[0]<=report.to&&indices.has(p[4]));
+  };
+  const seasonRecords = (row: ReportRow, kind: 'registered'|'ranked'|'writing'|'posts'):RecordsSpec => {
+    if (kind==='posts') return publicationRecords(`Публикации: ${row.label}`,data,postsFor(row),p=>p[13]===0?'Вне рейтинга':'Зачтён');
+    const authors = row.authors.filter(a=>kind==='registered'?a.registered:kind==='ranked'?a.counted>0:a.posts>0);
+    const names = {registered:'Зарегистрированные авторы',ranked:'Авторы в рейтинге',writing:'Авторы с публикациями'};
+    const indices = new Set(authors.map(a=>a.index));
+    return {title:`${names[kind]}: ${row.label}`,rule:'С начала сезона по выбранную дату. Каждый автор учтён один раз.',
+      sections:[{title:'Авторы',items:authors.map(a=>({id:String(a.index),title:a.name,value:postCount(a.posts),detail:`${a.counted} зачтено`}))},
+        {title:'Публикации этих авторов',items:publicationRecords('',data,postsFor(row).filter(p=>indices.has(p[4])&&(kind!=='ranked'||p[13]!==0)),p=>p[13]===0?'Вне рейтинга':'Зачтён').items}]};
+  };
   const text = useMemo(() => mediaReportText(report), [report]);
   const query = q.toLowerCase().replace(/ё/g, 'е').trim();
   const blocks = [...report.rows, report.outside].filter(g => !group || group === g.id).map(g => ({ ...g, shown: g.authors.filter(a => !query || `${g.label} ${g.contact} ${a.name}`.toLowerCase().replace(/ё/g, 'е').includes(query)) })).filter(g => g.shown.length);
@@ -46,12 +61,12 @@ export default function MediaReport({ data, stale }: { data: PdData; stale: bool
       {!valid && <p className="danger-text" role="alert">Дата сравнения должна быть раньше даты отчёта.</p>}
     </div>
     <div className="media-report-overview" aria-label="Итоги сезона">
-      {[['Зарегистрировано', report.all.registered, 'по именному списку'], ['В рейтинге', report.all.ranked, 'есть зачтённые посты'], ['Пишет', report.all.writing, `включая вне рейтинга · +${report.all.writingDelta} к сравнению`], ['Постов всего', report.all.posts, `${report.all.counted} зачтено · +${report.all.postsDelta} к сравнению`]].map(([label, value, sub]) => <div className="card" key={label}><span className="muted small">{label}</span><strong className="num">{value}</strong><span className="small muted">{sub}</span></div>)}
+      {([['Зарегистрировано', 'registered', 'по именному списку'], ['В рейтинге', 'ranked', 'есть зачтённые посты'], ['Пишет', 'writing', `включая вне рейтинга · +${report.all.writingDelta} к сравнению`], ['Постов всего', 'posts', `${report.all.counted} зачтено · +${report.all.postsDelta} к сравнению`]] as const).map(([label, key, sub]) => <div className="card" key={label}><span className="muted small">{label}</span><strong className="num"><MetricValue records={()=>seasonRecords(report.all,key)}>{report.all[key]}</MetricValue></strong><span className="small muted">{sub}</span></div>)}
     </div>
     <div className="card media-report-sheet">
       <div className="media-report-sheet-head"><div><span className="eyebrow">Пиши-Делись · 11 сезон</span><h2>{fmtDate(report.from)} — {fmtDate(to)}</h2><p className="muted small">В скобках — изменение к {fmtDate(compareTo)}.</p></div><div className="row wrap"><Button size="sm" icon={Copy} disabled={!valid} onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Отчёт и именной список скопированы'); } catch { setShowText(true); } }}>Скопировать отчёт</Button><Button size="sm" icon={ImageDown} disabled={pngBusy || !valid} onClick={download}>{pngBusy ? 'Готовим…' : 'Картинка PNG'}</Button><Button size="sm" icon={Download} disabled={!valid} onClick={() => saveBlob(new Blob([mediaReportCsv(report)], { type: 'text/csv;charset=utf-8' }), `Пиши-Делись_11_сезон_${to}.csv`)}>Таблица</Button></div></div>
       <div className="table-wrap"><table className="tbl media-report-table"><thead><tr><th scope="col">Округ</th><th scope="col">Зарегистрировано авторов</th><th scope="col">В рейтинге</th><th scope="col" className="media-report-writing">Сколько пишет</th><th scope="col">Количество постов</th></tr></thead><tbody>
-        {[...report.rows.filter(g => g.id !== 'hq'), report.districts, ...report.rows.filter(g => g.id === 'hq'), report.total].map(g => <tr key={g.id} className={['districts', 'total'].includes(g.id) ? 'media-report-total' : ''}><th scope="row">{['districts', 'total'].includes(g.id) ? g.label : <button className="media-report-district" onClick={() => setGroup(g.id)}>{g.label}</button>}</th><td>{g.registered}</td><td>{g.ranked}</td><td className="media-report-writing"><b>{g.writing}</b><span className="media-report-delta">{reportDelta(g.writingDelta)}</span></td><td><b>{g.posts}</b><span className="media-report-delta">{reportDelta(g.postsDelta)}</span><small>{g.counted} зачтено</small></td></tr>)}
+        {[...report.rows.filter(g => g.id !== 'hq'), report.districts, ...report.rows.filter(g => g.id === 'hq'), report.total].map(g => <tr key={g.id} className={['districts', 'total'].includes(g.id) ? 'media-report-total' : ''}><th scope="row">{['districts', 'total'].includes(g.id) ? g.label : <button className="media-report-district" onClick={() => setGroup(g.id)}>{g.label}</button>}</th><td><MetricValue records={()=>seasonRecords(g,'registered')}>{g.registered}</MetricValue></td><td><MetricValue records={()=>seasonRecords(g,'ranked')}>{g.ranked}</MetricValue></td><td className="media-report-writing"><MetricValue records={()=>seasonRecords(g,'writing')}><b>{g.writing}</b><span className="media-report-delta">{reportDelta(g.writingDelta)}</span></MetricValue></td><td><MetricValue records={()=>seasonRecords(g,'posts')}><b>{g.posts}</b><span className="media-report-delta">{reportDelta(g.postsDelta)}</span></MetricValue><small>{g.counted} зачтено</small></td></tr>)}
       </tbody></table></div>
       <div className="media-report-footnote"><p><b>В рейтинге</b> — есть хотя бы один пост со статусом «Выполнены». <b>Пишет</b> — есть хотя бы один пост любого статуса, включая незачтённые. Авторы вне рейтинга тоже входят в этот показатель; каждый человек считается один раз.</p><p>Сравнение пересчитывается по датам публикаций из текущей выгрузки. Изменения состава и статусов задним числом в него не входят.</p>{report.rows.filter(g => g.declared !== undefined && g.declared !== g.registered).map(g => <p key={g.id}>{g.label}: в заголовке таблицы указано {g.declared}, поимённо перечислено {g.registered}. В отчёт взят именной список.</p>)}<p className="small muted">Источник получен: {fmtStamp(report.updated)}.{data.workbookUrl && <> <a href={data.workbookUrl} target="_blank" rel="noreferrer">Открыть рабочую таблицу ↗</a></>}</p></div>
     </div>

@@ -5,6 +5,7 @@ import { roleLabel } from "../data/types";
 import { todayISO } from "../lib/date";
 import { go } from "../lib/router";
 import { openRecords } from "../ui/global";
+import { dailyCoverage, taskShare } from "../ui/metricSources";
 import { useMe, usePeriod } from "../ui/hooks";
 import { Avatar, Button } from "../ui/kit";
 import { ProgressRing } from "../ui/charts";
@@ -64,15 +65,15 @@ export default function PerformancePage() {
                     {roleLabel(person)} · {person.districtId} округ
                   </p>
                 </div>
-                <div className="performance-score"><ProgressRing value={r.score === null ? null : r.score / 100} suffix="" label={r.score === null ? "мало данных" : "из 100"}/></div>
+                <div className="performance-score"><ProgressRing value={r.score === null ? null : r.score / 100} suffix="" label={r.score === null ? "мало данных" : "из 100"} onPick={() => openRecords({title:`Оценка: ${person.name}`,rule:'60% выполнение задач, 40% своевременность сдачи. Оценка доступна от трёх задач.',sections:[
+                  ...taskShare('Выполнение',r.tasks,r.done,'').sections!.map((section,i)=>({...section,title:i===0?'Выполнено':'Остальные задачи'})),
+                  ...taskShare('Сроки',r.submitted,r.onTime,'').sections!.map((section,i)=>({...section,title:i===0?'Сдано вовремя':'Сдано с опозданием или без даты'})),
+                ]})}/></div>
               </div>
               <div className="performance-measures">
                 <button
                   onClick={() =>
-                    openRecords({
-                      title: "Задачи округа на период",
-                      tasks: r.tasks,
-                    })
+                    openRecords(taskShare("Задачи округа на период",r.tasks,r.done,"Подтверждённые задачи из назначенных на завершившиеся дни выбранного периода."))
                   }
                 >
                   <span>Выполнено</span>
@@ -83,10 +84,7 @@ export default function PerformancePage() {
                 </button>
                 <button
                   onClick={() =>
-                    openRecords({
-                      title: "Сданные вовремя результаты",
-                      tasks: r.onTime,
-                    })
+                    openRecords(taskShare("Сроки сдачи результатов",r.submitted,r.onTime,"Среди задач с результатом в статусе «На проверке» или «Выполнена»."))
                   }
                 >
                   <span>Сдано вовремя</span>
@@ -95,7 +93,7 @@ export default function PerformancePage() {
                     {r.onTime.length} из {r.submitted.length} сданных
                   </small>
                 </button>
-                <button disabled={!r.dailyVisible} onClick={() => go("/daily")}>
+                <button disabled={!r.dailyVisible} onClick={() => openRecords({...dailyCoverage(me,[person],r.days,s.dailyReports),title:`Отчёты дня: ${person.name}`})}>
                   <span>Отчёты дня</span>
                   <b>
                     {r.dailyVisible

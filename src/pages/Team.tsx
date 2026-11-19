@@ -8,6 +8,7 @@ import { roleLabel, teamRoleOf, TEAM_ROLES } from '../data/types';
 import { addDays, fmtDate, fmtDayMonth, fmtTime, todayISO } from '../lib/date';
 import { go, type Route } from '../lib/router';
 import { openEvent, openNewEvent, openNewTask, openRecords } from '../ui/global';
+import { planRecords, timelinessRecords } from '../ui/metricSources';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Empty, ReportBadge, Tabs } from '../ui/kit';
 import { ContextBar, MoMap, TaskRow } from '../ui/widgets';
@@ -183,9 +184,9 @@ function PersonPage({ id }: { id: string }) {
       <PersonAdminCard u={u} />
       {(me.id === u.id || me.role === 'head' || (me.role === 'coordinator' && me.districtId === u.districtId)) && <PersonActivity u={u} />}
       <div className="grid g-3" style={{ marginTop: 16 }}>
-        <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">Активные задачи</span><span className="kpi-value">{active.length}</span><span className="kpi-foot">{active.filter((t) => isOverdue(t)).length} просрочено</span></div>
+        <button className="kpi" onClick={() => openRecords({title:`Активные задачи: ${u.name}`,tasks:active})}><span className="kpi-label">Активные задачи</span><span className="kpi-value">{active.length}</span><span className="kpi-foot">{active.filter((t) => isOverdue(t)).length} просрочено</span></button>
         <button className="kpi" onClick={() => openRecords({ title: `Подтверждённые результаты: ${u.name}`, rule: 'Задачи, где человек — ответственный, подтверждённые в выбранном периоде.', tasks: done, cellValue: (t) => taskPoints(s, t).toFixed(1) })}><span className="kpi-label">Подтверждено · {period.label.toLowerCase()}</span><span className="kpi-value">{done.length}</span><span className="kpi-foot">Открыть список</span></button>
-        <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">Баллы результатов</span><span className="kpi-value">{num(points)}</span><span className="kpi-foot">вес приоритета × срок сдачи</span></div>
+        <button className="kpi" onClick={() => openRecords({title:`Баллы результатов: ${u.name}`,rule:'Вес приоритета с учётом срока сдачи.',tasks:done,cellValue:t=>num(taskPoints(s,t))})}><span className="kpi-label">Баллы результатов</span><span className="kpi-value">{num(points)}</span><span className="kpi-foot">вес приоритета × срок сдачи</span></button>
       </div>
       <div className="grid g-2" style={{ marginTop: 16 }}>
         <div className="card"><div className="card-head"><h2>Текущие задачи</h2></div><div className="card-body" style={{ padding: '8px 0' }}>
@@ -225,9 +226,9 @@ function DistrictPage({ id }: { id: string }) {
         {P.canCreateEvent(me) && (P.isManager(me) || me.districtId === id) && <Button icon={CalendarDays} onClick={() => openNewEvent({ districtId: id })}>Мероприятие</Button>}
       </div>
       <div className="grid g-4">
-        <button className="kpi" onClick={() => go('/analytics')}><span className="kpi-label">Выполнение плана</span><span className="kpi-value">{pct(k.plan)}</span><Bar value={k.plan} /></button>
+        <button className="kpi" onClick={() => openRecords(planRecords(`Выполнение плана: ${d.name}`,k.facts))}><span className="kpi-label">Выполнение плана</span><span className="kpi-value">{pct(k.plan)}</span><Bar value={k.plan} /></button>
         <button className="kpi" onClick={() => openRecords({ title: `Подтверждено: ${d.name}`, tasks: k.confirmed })}><span className="kpi-label">Подтверждено</span><span className="kpi-value">{k.confirmed.length}</span><span className="kpi-foot">из {k.assigned.length} назначенных</span></button>
-        <button className="kpi" onClick={() => openRecords({ title: `Вовремя: ${d.name}`, tasks: k.onTimeRecords })}><span className="kpi-label">Вовремя</span><span className="kpi-value">{k.onTimeShare === null ? '—' : pct(k.onTimeShare)}</span></button>
+        <button className="kpi" onClick={() => openRecords(timelinessRecords(`Вовремя: ${d.name}`,k.confirmed))}><span className="kpi-label">Вовремя</span><span className="kpi-value">{k.onTimeShare === null ? '—' : pct(k.onTimeShare)}</span></button>
         <button className="kpi" onClick={() => openRecords({ title: `Просрочено: ${d.name}`, tasks: k.overdue })}><span className="kpi-label">Просрочено</span><span className="kpi-value" style={{ color: k.overdue.length ? 'var(--c-danger)' : undefined }}>{k.overdue.length}</span></button>
       </div>
       <div className="grid g-main" style={{ marginTop: 16 }}>

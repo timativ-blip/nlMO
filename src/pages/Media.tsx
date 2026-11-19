@@ -9,6 +9,8 @@ import { go, type Route } from '../lib/router';
 import { MONTHS_NOM, plural } from '../lib/date';
 import { Bar, Button, Drawer, Empty, Segmented, Tabs } from '../ui/kit';
 import { MoMap } from '../ui/widgets';
+import { openRecords, type RecordsSpec } from '../ui/global';
+import { publicationRecords } from '../ui/metricSources';
 import BriefsView from './Briefs';
 import MediaReport from './MediaReport';
 import { DEMO_MODE, getState, useAppState } from '../data/store';
@@ -105,12 +107,22 @@ export default function MediaPage({ route }: { route: Route }) {
   const view = (route.parts[1] as View) || 'report';
   const pd = useJson<PdData>('media-pd', 60000);
   const months = useMemo(() => (pd.data ? mediaMonths(pd.data) : []), [pd.data]);
-  const [selectedMonth, setMonth] = useState('');
+  const [selectedMonth, setMonth] = useState(route.query.get('month') ?? '');
   const month = mediaMonth(months, selectedMonth);
   const A = useMemo(() => (pd.data && month ? compute(pd.data, month) : null), [pd.data, month]);
   const [sheet, setSheet] = useState<{ t: 'g' | 'p' | 'about'; id: string }[]>([]);
   const open = (t: 'g' | 'p' | 'about', id: string, push = false) => setSheet((s) => (push ? [...s, { t, id }] : [{ t, id }]));
   useEffect(() => setSheet([]), [view]);
+  const requestedMonth = route.query.get('month');
+  const requestedAuthor = route.query.get('author');
+  const requestedGroup = route.query.get('group');
+  useEffect(() => {
+    if (requestedMonth) setMonth(requestedMonth);
+  }, [requestedMonth]);
+  useEffect(() => {
+    if (requestedAuthor && /^\d+$/.test(requestedAuthor)) setSheet([{t:'p',id:requestedAuthor}]);
+    else if (requestedGroup) setSheet([{t:'g',id:requestedGroup}]);
+  }, [requestedAuthor, requestedGroup, view]);
   const mi = months.indexOf(month);
 
   return (
@@ -462,16 +474,20 @@ function DashView({ A, D, month, months, open }: { A: Calc; D: PdData; month: st
     G.data.groups.forEach((g) => ASSESSED_NETWORKS.forEach((n) => { if (!g[n]) return; const st = chState(g[n]); c[st.cls]++; if (st.cls === 'bad') silent.set(g.okrug, (silent.get(g.okrug) ?? 0) + 1); }));
     return { c, silent: [...silent].sort((a, b) => b[1] - a[1]).slice(0, 5) };
   })() : null;
-  const Tile = ({ label, value, foot }: { label: string; value: string; foot?: React.ReactNode }) => <div className="kpi" style={{ cursor: 'default' }}><span className="kpi-label">{label}</span><span className="kpi-value">{value}</span><span className="kpi-foot">{foot}</span></div>;
+  const authorRecords = (title:string, authors:Person[], includeSilent = false):RecordsSpec => ({
+    title,rule:'Каждый автор считается один раз. Открывает публикации выбранного месяца.',
+    items:authors.filter(a=>includeSilent||a.posts>0).map(a=>({id:String(a.i),title:a.name,detail:A.label(a.g),value:`${a.posts} пост.`,href:'/media/aut?'+new URLSearchParams({month,author:String(a.i)})})),
+  });
+  const Tile = ({ label, value, foot, records }: { label: string; value: string; foot?: React.ReactNode; records:()=>RecordsSpec }) => <button type="button" className="kpi" onClick={()=>openRecords(records())}><span className="kpi-label">{label}</span><span className="kpi-value">{value}</span><span className="kpi-foot">{foot}</span></button>;
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="grid dash-tiles">
-        <Tile label="Посты" value={fmt(cur.posts)} foot={delta(cur.posts, prev?.posts)} />
-        <Tile label="Баллы" value={fmt(cur.pts)} foot={delta(cur.pts, prev?.pts)} />
-        <Tile label="Авторы с постами" value={fmt(cur.authors)} foot={delta(cur.authors, prev?.authors)} />
-        <Tile label="Пишут из списка" value={`${Math.round(cur.writingShare * 100)}%`} foot={`${cur.writing} из ${cur.roster} человек · включая вне рейтинга`} />
-        <Tile label="Просмотры" value={fmt(cur.views)} foot={delta(cur.views, prev?.views)} />
-        <Tile label="Вклад в рейтинг региона" value={fmt(cur.contrib)} foot={delta(cur.contrib, prev?.contrib)} />
+        <Tile label="Посты" value={fmt(cur.posts)} foot={delta(cur.posts, prev?.posts)} records={()=>publicationRecords('Посты за месяц',D,A.P)} />
+        <Tile label="Баллы" value={fmt(cur.pts)} foot={delta(cur.pts, prev?.pts)} records={()=>publicationRecords('Баллы за месяц',D,A.P,p=>fmt(p[5]))} />
+        <Tile label="Авторы с постами" value={fmt(cur.authors)} foot={delta(cur.authors, prev?.authors)} records={()=>authorRecords('Авторы с постами',A.people)} />
+        <Tile label="Пишут из списка" value={`${Math.round(cur.writingShare * 100)}%`} foot={`${cur.writing} из ${cur.roster} человек · включая вне рейтинга`} records={()=>authorRecords('Авторы из списка округов и штаба',A.groups.filter(g=>g.id!=='none').flatMap(g=>g.mem),true)} />
+        <Tile label="Просмотры" value={fmt(cur.views)} foot={delta(cur.views, prev?.views)} records={()=>publicationRecords('Просмотры за месяц',D,A.P,p=>fmt(p[7]))} />
+        <Tile label="Вклад в рейтинг региона" value={fmt(cur.contrib)} foot={delta(cur.contrib, prev?.contrib)} records={()=>publicationRecords('Вклад в рейтинг региона',D,A.P,p=>fmt(p[6]))} />
       </div>
       <div className="grid g-main">
         <div className="card">

@@ -9,6 +9,7 @@ import { EVENT_TYPE_LABEL, REPORT_STATUS_LABEL, STATUS_LABEL } from '../data/typ
 import { fmtDate, fmtDayMonth, fmtRange, fmtStamp, fmtTime, plural } from '../lib/date';
 import { go, type Route } from '../lib/router';
 import { openEvent, openRecords, openTask } from '../ui/global';
+import { MetricValue } from '../ui/metricSources';
 import { useLookup, useMe } from '../ui/hooks';
 import { Avatar, Button, Empty, Field, Modal, ReportBadge, run, Textarea, toast } from '../ui/kit';
 import { DownloadButton } from '../ui/DownloadButton';
@@ -32,7 +33,7 @@ function ReportList() {
         <div className="grow"><h1>Отчёты</h1><div className="sub">Недельный отчёт округа собирается автоматически из подтверждённых задач и мероприятий</div></div>
         <DownloadButton icon={FileSpreadsheet} onDownload={() => exportMany(s, list)} disabled={!list.length}>Сводка в Excel</DownloadButton>
       </div>
-      {toReview > 0 && <div className="callout warn" style={{ marginBottom: 14 }}><Send size={16} />Ждут вашей проверки: <b>{toReview}</b> <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setStatus('sent')}>Показать</button></div>}
+      {toReview > 0 && <div className="callout warn" style={{ marginBottom: 14 }}><Send size={16} />Ждут вашей проверки: <MetricValue records={{title:'Отчёты на проверке',items:s.reports.filter(r=>P.canReviewReport(me,r)).map(r=>({id:r.id,title:L.dname(r.districtId),detail:fmtDayMonth(r.weekStart),href:'/reports/'+r.id}))}}><b>{toReview}</b></MetricValue> <button className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setStatus('sent')}>Показать</button></div>}
       <div className="toolbar">
         {P.isManager(me) && <select className="select select-sm" style={{ width: 160 }} value={district} onChange={(e) => setDistrict(e.target.value)} aria-label="Округ"><option value="">Все округа</option>{s.districts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>}
         <select className="select select-sm" style={{ width: 160 }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Статус"><option value="">Все статусы</option>{(Object.keys(REPORT_STATUS_LABEL) as ReportStatus[]).map((k) => <option key={k} value={k}>{REPORT_STATUS_LABEL[k]}</option>)}</select>
@@ -46,11 +47,11 @@ function ReportList() {
               {list.map((r) => {
                 const d = reportData(s, r.districtId, r.weekStart);
                 return (
-                  <tr key={r.id} className="clickable" tabIndex={0} onClick={() => go(`/reports/${r.id}`)} onKeyDown={(e) => e.key === 'Enter' && go(`/reports/${r.id}`)}>
+                  <tr key={r.id} className="clickable" tabIndex={0} onClick={() => go(`/reports/${r.id}`)} onKeyDown={(e) => e.target===e.currentTarget && e.key === 'Enter' && go(`/reports/${r.id}`)}>
                     <td className="t-title">{L.dname(r.districtId)}</td>
                     <td className="nowrap">{fmtRange(d.from, d.to)}</td>
-                    <td className="right">{d.tasks.length}</td>
-                    <td className="right">{d.events.length}</td>
+                    <td className="right"><MetricValue records={{title:'Подтверждённые задачи отчёта',tasks:d.tasks}}>{d.tasks.length}</MetricValue></td>
+                    <td className="right"><MetricValue records={{title:'Мероприятия отчёта',items:d.events.filter(e=>P.canSeeEvent(me,e)).map(e=>({id:e.id,title:e.title,detail:fmtDayMonth(e.start),href:'/calendar/'+e.id}))}}>{d.events.length}</MetricValue></td>
                     <td><ReportBadge status={r.status} /></td>
                     <td className="hide-card small muted nowrap">{fmtStamp(r.updatedAt)}</td>
                   </tr>

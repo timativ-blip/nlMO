@@ -35,14 +35,14 @@ export function WorkspaceNavigation({ items, page, collapsed, dailyMissing, task
   useEffect(() => {
     try { localStorage.setItem(KEY, JSON.stringify(open)); } catch { /* navigation stays usable */ }
   }, [open]);
-  const link = (item: NavigationItem, primary = false) => {
+  const link = (item: NavigationItem, primary = false, groupId?: string) => {
     const selected = page === item.id || primary && (
       item.id === "tasks" && activeGroup === "work" || item.id === "planning" && activeGroup === "meetings"
-    );
+    ) || !!groupId && activeGroup === groupId;
     return <a key={item.id} href={`#/${item.id}`} className={`nav-item ${selected ? "active" : ""}`}
       aria-current={page === item.id ? "page" : undefined} aria-label={item.label} title={collapsed ? item.label : undefined}>
       <item.icon size={18} strokeWidth={1.7}/><span className="nav-label">{item.label}</span>
-      {item.id === "daily" && dailyMissing && <span className="count" title="Отчёт за сегодня ещё не сдан">1</span>}
+      {(item.id === "daily" || groupId === "districts") && dailyMissing && <span className="count" title="Отчёт за сегодня ещё не сдан">1</span>}
       {item.id === "tasks" && taskCount > 0 && <span className="count" title="Результаты на проверке и ваши просрочки">{taskCount}</span>}
     </a>;
   };
@@ -52,23 +52,23 @@ export function WorkspaceNavigation({ items, page, collapsed, dailyMissing, task
     </button>
     <nav className="sidebar-links" aria-label="Разделы штаба">
       {PRIMARY.flatMap(id => items.filter(item => item.id === id)).map(item => link(item, true))}
-      {collapsed && GROUPS.filter(g => g.id === "work" || g.id === "meetings").flatMap(g => g.pages).filter(id => !PRIMARY.includes(id)).flatMap(id => items.filter(item => item.id === id)).map(item => link(item))}
       <div className="sidebar-section-rule"/>
       {GROUPS.filter(g => "icon" in g).map(group => {
         const entries = group.pages.flatMap(id => items.filter(item => item.id === id));
         if (!entries.length) return null;
         if (group.id === "content") return <div key={group.id} className="nav-direct">{link({ ...entries[0], label: "Контент" })}</div>;
+        if (collapsed) return <div key={group.id} className="nav-direct">{link({ ...entries[0], label: group.label, icon: group.icon! }, false, group.id)}</div>;
         const expanded = open.includes(group.id);
         const Icon = group.icon!;
         return <section key={group.id} className="nav-group" aria-label={group.label}>
-          {!collapsed && <button type="button" className={`nav-group-heading ${activeGroup === group.id ? "current-section" : ""}`}
+          <button type="button" className={`nav-group-heading ${activeGroup === group.id ? "current-section" : ""}`}
             aria-label={group.label} aria-expanded={expanded} aria-controls={"nav-group-" + group.id}
             onClick={() => setOpen(value => value.includes(group.id) ? value.filter(id => id !== group.id) : [...value, group.id])}>
             <Icon size={18} strokeWidth={1.7}/><span className="grow">{group.label}</span>
             {!expanded && group.id === "districts" && dailyMissing && <span className="nav-group-count" aria-hidden>1</span>}
             <ChevronDown size={14} aria-hidden className={`group-chevron ${expanded ? "is-open" : ""}`}/>
-          </button>}
-          <div id={"nav-group-" + group.id} className="nav-group-items" hidden={!collapsed && !expanded}>{entries.map(item => link(item))}</div>
+          </button>
+          <div id={"nav-group-" + group.id} className="nav-group-items" hidden={!expanded}>{entries.map(item => link(item))}</div>
         </section>;
       })}
     </nav>
