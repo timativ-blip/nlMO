@@ -7,6 +7,7 @@ import { STATUS_LABEL, type Task } from '../data/types';
 import { fmtDayMonth, fmtRange, inRange } from '../lib/date';
 import { go } from '../lib/router';
 import { openRecords } from '../ui/global';
+import { MetricValue, planRecords, taskShare, timelinessRecords } from '../ui/metricSources';
 import { useMe, usePeriod } from '../ui/hooks';
 import { ActivityHeatmap, AnimatedNumber, DayColumns, DonutChart, ProgressRing, Sparkline } from '../ui/charts';
 import { ComparisonColumns, SegmentGauge } from '../ui/DashboardVisuals';
@@ -43,23 +44,27 @@ export function InsightsOverview() {
   const personal = me.role === 'member';
   const cohortTotal = distribution.reduce((n,d) => n+d.tasks.length,0);
   const completion = cohortTotal ? (distribution.find((d) => d.id === 'done')?.tasks.length ?? 0)/cohortTotal : 0;
+  const openCompletion = () => openRecords(personal
+    ? taskShare('Выполнение задач', distribution.flatMap(d => d.tasks), distribution.find(d => d.id === 'done')?.tasks ?? [], 'Задачи со сроком в выбранном периоде.')
+    : planRecords('Выполнение плана', k.facts));
+  const openTimeliness = () => openRecords(timelinessRecords('Соблюдение сроков', k.confirmed));
   return <div className="insights-overview">
     <div className="dashboard-grid analytics-dashboard">
       <section className="card dashboard-card dashboard-completion">
-        <div className="dashboard-card-head"><span className="dashboard-icon"><Target size={17}/></span><h2>{personal ? 'Выполнение задач' : 'Выполнение плана'}</h2></div>
-        <ProgressRing value={personal ? (cohortTotal ? completion : null) : k.facts.length ? k.plan : null} label={personal ? 'выполнено' : 'плана'}/>
+        <div className="dashboard-card-head"><span className="dashboard-icon"><Target size={17}/></span><h2>{personal ? 'Выполнение задач' : 'Выполнение плана'}</h2><button type="button" className="dashboard-detail" onClick={openCompletion} aria-label="Открыть записи выполнения"><ArrowUpRight size={17}/></button></div>
+        <ProgressRing value={personal ? (cohortTotal ? completion : null) : k.facts.length ? k.plan : null} label={personal ? 'выполнено' : 'плана'} onPick={openCompletion}/>
         <p className="dashboard-caption">{personal ? 'Задачи со сроком в выбранном периоде' : 'По показателям и планам округов'}</p>
         <span className="dashboard-period">{period.label}</span>
       </section>
-      <StatCard label="Подтверждено" value={k.confirmed.length} icon={CheckCheck} foot={`Было ${prev.confirmed.length} в прошлом периоде`} onClick={() => showTasks('Подтверждённые результаты', k.confirmed, 'По дате подтверждения в выбранном периоде.')} trend={trend.map((d)=>d.confirmed)} />
+      <StatCard label="Подтверждено" value={k.confirmed.length} icon={CheckCheck} foot={`Было ${prev.confirmed.length} в прошлом периоде`} onClick={() => openRecords({title:'Подтверждённые результаты',rule:'По дате подтверждения результата.',sections:[{title:fmtRange(period.from,period.to),tasks:k.confirmed},{title:fmtRange(period.prevFrom,period.prevTo),tasks:prev.confirmed}]})} trend={trend.map((d)=>d.confirmed)} />
       <section className="card dashboard-card dashboard-timeliness">
-        <div className="dashboard-card-head"><span className="dashboard-icon"><Clock3 size={17}/></span><h2>Соблюдение сроков</h2><button type="button" className="dashboard-detail" onClick={() => showTasks('Результаты, сданные вовремя', k.onTimeRecords, 'Дата сдачи результата не позже срока задачи.')} aria-label="Открыть результаты, сданные вовремя"><ArrowUpRight size={17}/></button></div>
-        <SegmentGauge value={k.onTimeShare} label="сдано вовремя"/>
+        <div className="dashboard-card-head"><span className="dashboard-icon"><Clock3 size={17}/></span><h2>Соблюдение сроков</h2><button type="button" className="dashboard-detail" onClick={openTimeliness} aria-label="Открыть результаты по срокам"><ArrowUpRight size={17}/></button></div>
+        <SegmentGauge value={k.onTimeShare} label="сдано вовремя" onPick={openTimeliness}/>
         <p className="dashboard-caption">{k.confirmed.length ? `${k.onTimeRecords.length} из ${k.confirmed.length} результатов` : 'Оценка появится после подтверждения'}</p>
       </section>
       <StatCard label="На проверке" value={k.review.length} icon={ListChecks} foot="Текущая очередь, независимо от периода" onClick={() => showTasks('Текущая очередь проверки', k.review)} />
     </div>
-    <div className={`dashboard-change ${delta >= 0 ? 'positive' : 'negative'}`}>{delta >= 0 ? <ArrowUpRight size={15}/> : <ArrowDownRight size={15}/>}<b>{delta >= 0 ? '+' : ''}{delta}</b> подтверждённых результатов к прошлому периоду</div>
+    <div className={`dashboard-change ${delta >= 0 ? 'positive' : 'negative'}`}>{delta >= 0 ? <ArrowUpRight size={15}/> : <ArrowDownRight size={15}/>}<MetricValue records={{title:'Изменение числа подтверждённых результатов',sections:[{title:fmtRange(period.from,period.to),tasks:k.confirmed},{title:fmtRange(period.prevFrom,period.prevTo),tasks:prev.confirmed}]}}><b>{delta >= 0 ? '+' : ''}{delta}</b></MetricValue> подтверждённых результатов к прошлому периоду</div>
     <div className="analysis-grid">
       <section className="card analysis-wide"><div className="card-head"><div><span className="eyebrow">Темп работы</span><h2>От задач к результатам</h2></div><span className="chart-caption">{fmtRange(period.from, period.to)}</span></div>
         <div className="card-body"><ComparisonColumns data={trend} onPick={(point, series) => showTasks(`${series === 'assigned' ? 'Задачи по сроку' : 'Подтверждено'}: ${fmtRange(point.from, point.to)}`, series === 'confirmed' ? point.tasks : tasks.filter(task => task.status !== 'cancelled' && inRange(task.due, point.from, point.to)), series === 'confirmed' ? 'По дате подтверждения результата.' : 'По сроку задачи. Отменённые задачи исключены.')} /></div>
@@ -68,13 +73,13 @@ export function InsightsOverview() {
         <div className="card-body"><DonutChart segments={distribution.map((d)=>({ id:d.id,label:STATUS_LABEL[d.id],value:d.tasks.length,color:STATUS_COLORS[d.id],onClick:()=>showTasks(STATUS_LABEL[d.id],d.tasks) }))} /><p className="chart-note">Задачи со сроком в выбранном периоде. Отменённые исключены.</p></div>
       </section>
       <section className="card analysis-wide"><div className="card-head"><div><span className="eyebrow">Показатели</span><h2>Факт и план</h2></div><Button variant="ghost" size="sm" onClick={()=>go('/analytics/metrics')}>Правила <ArrowUpRight size={14} /></Button></div>
-        <div className="metric-grid card-body">{k.facts.map((f)=><button key={f.metric.id} type="button" className="metric-tile" onClick={()=>openRecords({title:f.metric.name,tasks:f.records,rule:`Сумма значений из подтверждённых задач. План пропорционален дням периода.`,cellValue:(t)=>String(t.result?.value??0)})}>
+        <div className="metric-grid card-body">{k.facts.map((f)=><button key={f.metric.id} type="button" className="metric-tile" onClick={()=>openRecords({...planRecords(f.metric.name,[f]),rule:'Сумма значений из подтверждённых задач. План пропорционален дням периода.'})}>
           <span className="stat-label">{f.metric.name}</span><b>{num(f.fact)}<small> / {num(f.plan)}</small></b><span className="metric-track"><i style={{width:`${Math.max(0,Math.min(1,f.pct))*100}%`}} /></span><span className="small muted">{pct(f.pct)} · {f.metric.unit}</span>
         </button>)}</div>
       </section>
-      <section className="card action-card"><span className="stat-icon warning"><TriangleAlert size={20} /></span><h2>{k.overdue.length ? 'Просрочки требуют внимания' : 'Просроченных задач нет'}</h2><p>Сейчас просрочено <b>{k.overdue.length}</b> задач. На проверке — <b>{k.review.length}</b>.</p><Button onClick={()=>go('/analytics/processes')} icon={ArrowRight}>Разобрать процессы</Button><span className="chart-note">Текущая ситуация, независимо от периода выше.</span></section>
+      <section className="card action-card"><span className="stat-icon warning"><TriangleAlert size={20} /></span><h2>{k.overdue.length ? 'Просрочки требуют внимания' : 'Просроченных задач нет'}</h2><p>Сейчас просрочено <MetricValue records={{title:'Просроченные задачи',tasks:k.overdue}}><b>{k.overdue.length}</b></MetricValue> задач. На проверке — <MetricValue records={{title:'На проверке',tasks:k.review}}><b>{k.review.length}</b></MetricValue>.</p><Button onClick={()=>go('/analytics/processes')} icon={ArrowRight}>Разобрать процессы</Button><span className="chart-note">Текущая ситуация, независимо от периода выше.</span></section>
     </div>
-    {!personal && <section className="card" style={{marginTop:20}}><div className="card-head"><div><span className="eyebrow">Территории</span><h2>Выполнение плана по округам</h2></div><span className="chart-caption">Отметка на шкале — 100%</span></div><div className="card-body district-comparison"><HBars rows={districts.map((d)=>({id:d.districtId,label:d.name,value:d.assigned.length ? d.plan:null,text:d.assigned.length ? pct(d.plan):'—',onClick:()=>go(`/team/districts/${d.districtId}`)}))} /></div></section>}
+    {!personal && <section className="card" style={{marginTop:20}}><div className="card-head"><div><span className="eyebrow">Территории</span><h2>Выполнение плана по округам</h2></div><span className="chart-caption">Отметка на шкале — 100%</span></div><div className="card-body district-comparison"><HBars rows={districts.map((d)=>({id:d.districtId,label:d.name,value:d.assigned.length ? d.plan:null,text:d.assigned.length ? pct(d.plan):'—',onClick:()=>openRecords(planRecords(`Выполнение плана: ${d.name}`,d.facts))}))} /></div></section>}
   </div>;
 }
 
@@ -86,9 +91,9 @@ export function ProcessAnalytics() {
   return <div className="process-analytics">
     <div className="analysis-intro"><div><span className="eyebrow">Процессы и узкие места</span><h2>Что поможет двигаться быстрее</h2><p>Сроки и очередь проверки — на сегодня. Скорость и доработки — за {period.label.toLowerCase()}.</p></div><span className="subtle-tag"><span className="live-dot" />По данным задач</span></div>
     <div className="stat-grid">
-      <StatCard label="До подтверждения" value={a.cycleMedian} unit="дн." icon={Hourglass} foot={`Медиана · ${a.cycles.length} задач с датами`} onClick={()=>showTasks('От создания до подтверждения',a.cycles.map((r)=>r.task),'Календарные дни по Москве. Медиана по задачам, подтверждённым в выбранном периоде.')} />
-      <StatCard label="Ожидают проверки" value={a.review.length} icon={CheckCheck} foot={`${pending.length} ждут 3 дня и дольше`} warning={!!pending.length} onClick={()=>showTasks('Очередь на проверку',a.review,'Текущие задачи в статусе «На проверке».')} />
-      <StatCard label="С доработкой" value={a.returnShare===null ? null:Math.round(a.returnShare*100)} unit="%" icon={RotateCcw} foot={`${a.returned.length} из ${a.confirmed.length} подтверждённых`} onClick={()=>showTasks('Подтверждённые задачи с доработкой',a.returned,'Хотя бы один возврат на доработку в истории задачи. Среди подтверждённых в выбранном периоде.')} />
+      <StatCard label="До подтверждения" value={a.cycleMedian} unit="дн." icon={Hourglass} foot={`Медиана · ${a.cycles.length} задач с датами`} onClick={()=>openRecords({title:'От создания до подтверждения',tasks:a.cycles.map(r=>r.task),rule:'Календарные дни по Москве. Медиана по задачам, подтверждённым в выбранном периоде.',cellValue:task=>String(a.cycles.find(r=>r.task.id===task.id)?.days??'—')})} />
+      <StatCard label="Ожидают проверки" value={a.review.length} icon={CheckCheck} foot={`${pending.length} ждут 3 дня и дольше`} warning={!!pending.length} onClick={()=>openRecords(taskShare('Очередь на проверку',a.review,pending.map(r=>r.task),'Из текущей очереди отдельно выделены задачи, ожидающие 3 дня и дольше.'))} />
+      <StatCard label="С доработкой" value={a.returnShare===null ? null:Math.round(a.returnShare*100)} unit="%" icon={RotateCcw} foot={`${a.returned.length} из ${a.confirmed.length} подтверждённых`} onClick={()=>openRecords(taskShare('Подтверждённые задачи с доработкой',a.confirmed,a.returned,'Хотя бы один возврат на доработку в истории задачи.'))} />
       <StatCard label="Сроки в ближайшие 7 дней" value={dueCount} icon={Target} foot="Новые и в работе · начиная с сегодня" onClick={()=>showTasks('Сроки на ближайшие 7 дней',a.upcoming.flatMap((d)=>d.tasks))} />
     </div>
     <div className="analysis-grid">

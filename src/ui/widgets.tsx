@@ -10,9 +10,10 @@ import type { Attachment, Task, User } from '../data/types';
 import { roleLabel } from '../data/types';
 import { fmtDate, fmtDayMonth, PERIOD_OPTIONS, type PeriodKey } from '../lib/date';
 import { useLookup, useMe } from './hooks';
-import { openRecords, openTask, useGlobal } from './global';
+import { openRecords, openTask, useGlobal, type RecordSection } from './global';
 import { Avatar, Button, Empty, Modal, PriorityTag, TaskStatusBadges, toast } from './kit';
-import { isManager } from '../data/perm';
+import { canSeeTask, isManager } from '../data/perm';
+import { go } from '../lib/router';
 
 /* ───────── Контекст экрана: период и округ ───────── */
 export function ContextBar({ showDistrict = true }: { showDistrict?: boolean }) {
@@ -48,39 +49,65 @@ export function useScopeDistrict() {
 /* ───────── Расшифровка любой сводной цифры ───────── */
 export function RecordsModal() {
   const g = useGlobal();
-  const L = useLookup();
-  const r = g.records;
+  const me = useMe();
+  const owner = useRef(me.id);
+  const r = owner.current === me.id ? g.records : null;
+  useEffect(() => () => openRecords(null), []);
+  useEffect(() => {
+    if (owner.current !== me.id) {
+      owner.current = me.id;
+      openRecords(null);
+    }
+  }, [me.id]);
   return (
     <Modal open={!!r} onClose={() => openRecords(null)} title={r?.title ?? ''} width={860}>
       {r && (
         <>
           {r.rule && <div className="callout info" style={{ marginBottom: 12 }}><FileText size={16} style={{ flex: 'none', marginTop: 2 }} /><span><b>Как считается:</b> {r.rule}</span></div>}
-          <div className="muted small" style={{ marginBottom: 8 }}>Записей: {r.tasks.length}. Нажмите на строку, чтобы открыть исходную задачу.</div>
-          {r.tasks.length === 0 ? (
-            <Empty icon={Search} title="Нет записей" text="За выбранный период в эту цифру ничего не попало. Попробуйте выбрать другой период или округ." />
-          ) : (
-            <div className="card table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-              <table className="tbl tbl-cards">
-                <thead><tr><th>Задача</th><th>Округ</th><th>Ответственный</th><th>Срок</th><th>Статус</th>{r.cellValue && <th className="right">Значение</th>}</tr></thead>
-                <tbody>
-                  {r.tasks.map((t) => (
-                    <tr key={t.id} className="clickable" onClick={() => openTask(t.id)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openTask(t.id)}>
-                      <td className="t-title"><span className="ellipsis">{t.title}</span></td>
-                      <td className="nowrap">{L.dname(t.districtId)}</td>
-                      <td className="nowrap"><span className="row"><Avatar user={L.user(t.assigneeId)} size={22} />{L.user(t.assigneeId)?.name}</span></td>
-                      <td className={`nowrap ${isOverdue(t) ? 'overdue-text' : ''}`}>{fmtDate(t.due)}</td>
-                      <td><TaskStatusBadges t={t} /></td>
-                      {r.cellValue && <td className="right num">{r.cellValue(t)}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="col metric-records">
+            {r.sections?.length ? r.sections.map((section, index) => <RecordSectionView key={index} section={section} heading />) : <RecordSectionView section={r} />}
+          </div>
         </>
       )}
     </Modal>
   );
+}
+
+function RecordSectionView({ section, heading = false }: { section: RecordSection; heading?: boolean }) {
+  const L = useLookup(), me = useMe();
+  const tasks = (section.tasks ?? []).filter(task => canSeeTask(me, task));
+  const items = section.items ?? [];
+  return <section className="col metric-record-section">
+    {heading && <h3>{section.title}</h3>}
+    <div className="muted small">Записей: {tasks.length + items.length}</div>
+    {!tasks.length && !items.length && <Empty icon={Search} title="Нет записей" text="В этот показатель записи не вошли." />}
+    {!!tasks.length && <div className="card table-wrap" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+              <table className="tbl tbl-cards">
+                <thead><tr><th>Задача</th><th>Округ</th><th>Ответственный</th><th>Срок</th><th>Статус</th>{section.cellValue && <th className="right">Значение</th>}</tr></thead>
+                <tbody>
+                  {tasks.map((t) => (
+                    <tr key={t.id} className="clickable" onClick={() => openTask(t.id)}>
+                      <td className="t-title"><button type="button" className="metric-value" onClick={event => {event.stopPropagation();openTask(t.id);}}>{t.title} <ExternalLink size={12} aria-hidden /></button></td>
+                      <td className="nowrap">{L.dname(t.districtId)}</td>
+                      <td className="nowrap"><span className="row"><Avatar user={L.user(t.assigneeId)} size={22} />{L.user(t.assigneeId)?.name}</span></td>
+                      <td className={`nowrap ${isOverdue(t) ? 'overdue-text' : ''}`}>{fmtDate(t.due)}</td>
+                      <td><TaskStatusBadges t={t} /></td>
+                      {section.cellValue && <td className="right num">{section.cellValue(t)}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>}
+    {items.map(item => item.href ? <button type="button" key={item.id} className="metric-record-item" onClick={() => { openRecords(null); go(item.href!); }}>
+      <span className="grow"><b>{item.title}</b>{item.detail && <small>{item.detail}</small>}</span>
+      {item.value && <strong>{item.value}</strong>}<ExternalLink size={15} aria-hidden />
+    </button> : item.externalHref ? <a key={item.id} className="metric-record-item" href={item.externalHref} target="_blank" rel="noopener noreferrer">
+      <span className="grow"><b>{item.title}</b>{item.detail && <small>{item.detail}</small>}</span>
+      {item.value && <strong>{item.value}</strong>}<ExternalLink size={15} aria-hidden />
+    </a> : <div key={item.id} className="metric-record-item">
+      <span className="grow"><b>{item.title}</b>{item.detail && <small>{item.detail}</small>}</span>{item.value && <strong>{item.value}</strong>}
+    </div>)}
+  </section>;
 }
 
 /* ───────── Компактная строка задачи ───────── */

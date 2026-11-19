@@ -9,6 +9,7 @@ import { PRIORITY_LABEL } from '../data/types';
 import { fmtDayMonth, fmtRange } from '../lib/date';
 import { go, type Route } from '../lib/router';
 import { openRecords } from '../ui/global';
+import { MetricValue, planRecords, planSections, taskShare, timelinessRecords } from '../ui/metricSources';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Avatar, Bar, Button, Field, Input, Modal, run, Segmented, Tabs, toast } from '../ui/kit';
 import { ContextBar, HBars, TrendChart, useScopeDistrict } from '../ui/widgets';
@@ -77,14 +78,14 @@ function Rating() {
               const isOpen = open === id;
               return (
                 <Fragment key={id}>
-                  <tr className="clickable" onClick={() => setOpen(isOpen ? null : id)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpen(isOpen ? null : id)} aria-expanded={isOpen}>
+                  <tr className="clickable" onClick={() => setOpen(isOpen ? null : id)} tabIndex={0} onKeyDown={(e) => e.target === e.currentTarget && e.key === 'Enter' && setOpen(isOpen ? null : id)} aria-expanded={isOpen}>
                     <td><span className={`rank ${r.score !== null && i < 3 ? `r${i + 1}` : ''}`}>{r.score === null ? '–' : i + 1}</span></td>
                     <td>{'user' in r ? <span className="row"><Avatar user={r.user} size={28} /><span className="col" style={{ gap: 0 }}><b>{r.user.name}</b><span className="small muted">{s.districts.find((d) => d.id === r.user.districtId)?.name}</span></span></span> : <b>{r.name}</b>}</td>
                     <td className="right">{r.score === null ? <span className="small muted">Недостаточно данных</span> : <span className="score">{Math.round(r.score)}</span>}</td>
-                    {'plan' in r && <td className="right hide-sm">{pct(r.plan)}</td>}
-                    <td className="right hide-sm">{pct(r.completion)}</td>
-                    <td className="right hide-sm">{r.done.length ? pct(r.onTime) : '—'}</td>
-                    {'points' in r && <td className="right hide-sm">{num(r.points)}</td>}
+                    {'plan' in r && <td className="right hide-sm"><MetricValue records={planRecords('Выполнение плана',r.facts)}>{pct(r.plan)}</MetricValue></td>}
+                    <td className="right hide-sm"><MetricValue records={taskShare('Выполнение заданий',r.assigned,r.done,'Задачи со сроком, который наступил, и выполненные досрочно.')}>{pct(r.completion)}</MetricValue></td>
+                    <td className="right hide-sm"><MetricValue records={timelinessRecords('Сдача вовремя',r.done)}>{r.done.length ? pct(r.onTime) : '—'}</MetricValue></td>
+                    {'points' in r && <td className="right hide-sm"><MetricValue records={{title:'Баллы результатов',tasks:r.done,cellValue:t=>num(r.contributions.find(c=>c.task.id===t.id)?.points??0)}}>{num(r.points)}</MetricValue></td>}
                     <td className="right">{isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
                   </tr>
                   {isOpen && <tr><td colSpan={8} style={{ background: 'var(--surface-2)', padding: 16 }}>{'user' in r ? <PersonBreakdown r={r as PersonScore} /> : <DistrictBreakdown r={r as DistrictScore} />}</td></tr>}
@@ -263,14 +264,14 @@ function OkrugSummary() {
             {data.map((d, i) => (
               <tr key={d.r.districtId} className="clickable" onClick={() => go(`/team/districts/${d.r.districtId}`)}>
                 <td className="t-title nowrap">{L.dname(d.r.districtId)}</td>
-                <td className="hc" style={shade(plan, plan[i])}>{d.r.assigned.length ? pct(d.r.plan) : '—'}</td>
-                <td className="hc" style={shade(data.map((x) => (x.r.assigned.length ? x.r.completion : null)), d.r.assigned.length ? d.r.completion : null)}>{d.r.assigned.length ? pct(d.r.completion) : '—'}</td>
-                <td className="hc" style={shade(data.map((x) => (x.r.done.length ? x.r.onTime : null)), d.r.done.length ? d.r.onTime : null)}>{d.r.done.length ? pct(d.r.onTime) : '—'}</td>
-                <td className="hc" style={shade(col('overdue'), d.overdue, true)}>{d.overdue}</td>
+                <td className="hc" style={shade(plan, plan[i])}><MetricValue records={planRecords(d.r.name, d.r.facts)}>{d.r.assigned.length ? pct(d.r.plan) : '—'}</MetricValue></td>
+                <td className="hc" style={shade(data.map((x) => (x.r.assigned.length ? x.r.completion : null)), d.r.assigned.length ? d.r.completion : null)}><MetricValue records={taskShare(d.r.name,d.r.assigned,d.r.done,'Задачи со сроком, который наступил, и выполненные досрочно.')}>{d.r.assigned.length ? pct(d.r.completion) : '—'}</MetricValue></td>
+                <td className="hc" style={shade(data.map((x) => (x.r.done.length ? x.r.onTime : null)), d.r.done.length ? d.r.onTime : null)}><MetricValue records={timelinessRecords(d.r.name,d.r.done)}>{d.r.done.length ? pct(d.r.onTime) : '—'}</MetricValue></td>
+                <td className="hc" style={shade(col('overdue'), d.overdue, true)}><MetricValue records={{title:'Просроченные задачи: '+d.r.name,tasks:s.tasks.filter(t=>t.districtId===d.r.districtId&&isOverdue(t))}}>{d.overdue}</MetricValue></td>
                 <td className="hc" style={shade(col('pts'), d.pts)}>{d.pts === null ? (pd.error ? '—' : '…') : num(d.pts)}</td>
                 <td className="hc" style={shade(col('posts'), d.posts)}>{d.posts === null ? '—' : num(d.posts)}</td>
                 <td className="hc" style={shade(col('writing'), d.writing)} title={`${d.writers} из ${d.roster}`}>{d.writing === null ? '—' : pct(d.writing)}</td>
-                <td className="hc" style={shade(data.map((x) => x.r.score), d.r.score)}>{d.r.score === null ? '—' : Math.round(d.r.score)}</td>
+                <td className="hc" style={shade(data.map((x) => x.r.score), d.r.score)}><MetricValue records={{title:'Оценка округа: '+d.r.name,rule:'Взвешенная оценка плана, выполнения и своевременности; вклад плана ограничен 100%.',sections:[...planSections(d.r.facts),{title:'Назначено на период',tasks:d.r.assigned},{title:'Подтверждено',tasks:d.r.done}]}}>{d.r.score === null ? '—' : Math.round(d.r.score)}</MetricValue></td>
               </tr>
             ))}
           </tbody>

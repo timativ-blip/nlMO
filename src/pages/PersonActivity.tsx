@@ -5,6 +5,9 @@ import { useMemo } from 'react';
 import { isOverdue, rateUsers } from '../data/calc';
 import * as P from '../data/perm';
 import { useAppState } from '../data/store';
+import { useMe } from '../ui/hooks';
+import { dailyCoverage, dailyRecord, MetricValue, publicationRecords } from '../ui/metricSources';
+import type { RecordsSpec } from '../ui/global';
 import type { User } from '../data/types';
 import { addDays, fmtDayMonth, monthEnd, monthStart, todayISO, weekday, weekStart } from '../lib/date';
 import { nameKey } from '../lib/names';
@@ -15,6 +18,7 @@ const workdaysIn = (r: Range) => { const out: string[] = []; for (let d = r.from
 
 export default function PersonActivity({ u }: { u: User }) {
   const s = useAppState();
+  const me = useMe();
   const pd = useJson<PdData>('media-pd', 5 * 60000);
   const today = todayISO();
   const week = { from: weekStart(today), to: today };
@@ -28,16 +32,19 @@ export default function PersonActivity({ u }: { u: User }) {
   const daily = P.mustReportDaily(u);
 
   const calc = (r: Range) => {
-    const mine = s.tasks.filter((t) => t.assigneeId === u.id || t.coAssigneeIds.includes(u.id));
+    const mine = s.tasks.filter((t) => P.canSeeTask(me,t) && (t.assigneeId === u.id || t.coAssigneeIds.includes(u.id)));
     const done = mine.filter((t) => t.status === 'done' && (t.confirmedAt ?? '') >= r.from && (t.confirmedAt ?? '') <= r.to);
-    const submitted = mine.filter((t) => t.result && t.result.submittedDate >= r.from && t.result.submittedDate <= r.to).length;
+    const submitted = mine.filter((t) => t.result && t.result.submittedDate >= r.from && t.result.submittedDate <= r.to);
     const posts = pd.data && pdIndex >= 0 ? pd.data.posts.filter((p) => p[4] === pdIndex && p[0] >= r.from && p[0] <= r.to) : [];
     const wd = workdaysIn(r).filter((d) => d <= today);
-    const reports = s.dailyReports.filter((x) => x.userId === u.id && x.day >= r.from && x.day <= r.to).length;
-    return { done: done.length, submitted, posts: posts.length, pts: posts.reduce((a, p) => a + (p[5] as number), 0), reports, wd: wd.length };
+    const reports = s.dailyReports.filter((x) => P.canSeeDaily(me,u) && x.userId === u.id && x.day >= r.from && x.day <= r.to);
+    const reportSources = dailyCoverage(me,[u],wd,s.dailyReports);
+    return { done: done.length, submitted:submitted.length, posts: posts.length, pts: posts.reduce((a, p) => a + (p[5] as number), 0), reports:reports.length, wd: wd.length,
+      doneTasks:done, submittedTasks:submitted, mediaPosts:posts, reportSources:{title:'Отчёты дня',rule:'Сохранённые отчёты за период и рабочие дни для сравнения.',sections:[{title:'Сданные отчёты (включая выходные)',items:reports.map(report=>dailyRecord(report,u))},...(reportSources.sections??[]).filter(section=>section.title==='Не сдано')]} };
   };
   const W = calc(week), PW = calc(prevWeek), M = calc(month), PM = calc(prevMonth);
-  const overdue = s.tasks.filter((t) => (t.assigneeId === u.id || t.coAssigneeIds.includes(u.id)) && isOverdue(t)).length;
+  const overdueTasks = s.tasks.filter((t) => P.canSeeTask(me,t) && (t.assigneeId === u.id || t.coAssigneeIds.includes(u.id)) && isOverdue(t));
+  const overdue = overdueTasks.length;
   const rank = useMemo(() => {
     const peers = s.users.filter((x) => x.active && x.role === u.role && (u.role !== 'member' || x.districtId === u.districtId));
     const r = rateUsers(s, peers, month.from, month.to).filter((x) => x.score !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -50,8 +57,8 @@ export default function PersonActivity({ u }: { u: User }) {
   const verdict = any === 0 ? { cls: 'danger', text: 'За эту неделю активности нет' } : (daily && W.reports < Math.min(W.wd, 3)) || overdue > 2 ? { cls: 'warn', text: 'Работает, но есть пробелы' } : { cls: 'ok', text: 'Активно работает' };
 
   const cmp = (a: number, b: number) => (b === 0 && a === 0 ? null : <span className={`small ${a >= b ? 'delta-up' : 'delta-down'}`}>{a >= b ? '↑' : '↓'} было {b}</span>);
-  const Row = ({ label, w, pw, m, pmv, hint }: { label: string; w: string | number; pw: number; m: string | number; pmv: number; hint?: string }) => (
-    <tr><td><b>{label}</b>{hint && <div className="small muted">{hint}</div>}</td><td className="right"><b className="num">{w}</b> {cmp(+String(w).split(' ')[0], pw)}</td><td className="right"><b className="num">{m}</b> {cmp(+String(m).split(' ')[0], pmv)}</td></tr>
+  const Row = ({ label, w, pw, m, pmv, hint, weekRecords, monthRecords }: { label: string; w: string | number; pw: number; m: string | number; pmv: number; hint?: string; weekRecords?:RecordsSpec; monthRecords?:RecordsSpec }) => (
+    <tr><td><b>{label}</b>{hint && <div className="small muted">{hint}</div>}</td><td className="right">{weekRecords?<MetricValue className="num" records={weekRecords}>{w}</MetricValue>:<b className="num">{w}</b>} {cmp(+String(w).split(' ')[0], pw)}</td><td className="right">{monthRecords?<MetricValue className="num" records={monthRecords}>{m}</MetricValue>:<b className="num">{m}</b>} {cmp(+String(m).split(' ')[0], pmv)}</td></tr>
   );
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -60,13 +67,13 @@ export default function PersonActivity({ u }: { u: User }) {
         <table className="tbl act-tbl">
           <thead><tr><th /><th className="right">Эта неделя<div className="small muted" style={{ fontWeight: 400 }}>с {fmtDayMonth(week.from)}</div></th><th className="right">Этот месяц<div className="small muted" style={{ fontWeight: 400 }}>с {fmtDayMonth(month.from)}</div></th></tr></thead>
           <tbody>
-            <Row label="Задачи подтверждены" w={W.done} pw={PW.done} m={M.done} pmv={PM.done} />
-            <Row label="Результаты сданы на проверку" w={W.submitted} pw={PW.submitted} m={M.submitted} pmv={PM.submitted} />
+            <Row label="Задачи подтверждены" w={W.done} pw={PW.done} m={M.done} pmv={PM.done} weekRecords={{title:'Подтверждено за неделю',tasks:W.doneTasks}} monthRecords={{title:'Подтверждено за месяц',tasks:M.doneTasks}} />
+            <Row label="Результаты сданы на проверку" w={W.submitted} pw={PW.submitted} m={M.submitted} pmv={PM.submitted} weekRecords={{title:'Сдано за неделю',tasks:W.submittedTasks}} monthRecords={{title:'Сдано за месяц',tasks:M.submittedTasks}} />
             {pdIndex >= 0
-              ? <Row label="Посты «Пиши-Делись»" hint={pdAsOf && pdAsOf < addDays(today, -2) ? `публикации в выгрузке по ${fmtDayMonth(pdAsOf)}` : `баллы: неделя ${Math.round(W.pts)}, месяц ${Math.round(M.pts)}`} w={W.posts} pw={PW.posts} m={M.posts} pmv={PM.posts} />
+              ? <Row label="Посты «Пиши-Делись»" hint={pdAsOf && pdAsOf < addDays(today, -2) ? `публикации в выгрузке по ${fmtDayMonth(pdAsOf)}` : `баллы: неделя ${Math.round(W.pts)}, месяц ${Math.round(M.pts)}`} w={W.posts} pw={PW.posts} m={M.posts} pmv={PM.posts} weekRecords={pd.data?publicationRecords('Посты за неделю',pd.data,W.mediaPosts):undefined} monthRecords={pd.data?publicationRecords('Посты за месяц',pd.data,M.mediaPosts):undefined} />
               : <tr><td><b>Посты «Пиши-Делись»</b></td><td colSpan={2} className="right small muted">{pd.data ? 'нет в списках «Пиши-Делись» (сверяем по фамилии и имени)' : 'загружаю…'}</td></tr>}
-            {daily && <Row label="Отчёты дня" hint="сдано из рабочих дней" w={`${W.reports} из ${W.wd}`} pw={PW.reports} m={`${M.reports} из ${M.wd}`} pmv={PM.reports} />}
-            <tr><td><b>Просрочено сейчас</b></td><td colSpan={2} className="right"><b className="num" style={{ color: overdue ? 'var(--c-danger)' : undefined }}>{overdue}</b></td></tr>
+            {daily && <Row label="Отчёты дня" hint="сдано из рабочих дней" w={`${W.reports} из ${W.wd}`} pw={PW.reports} m={`${M.reports} из ${M.wd}`} pmv={PM.reports} weekRecords={W.reportSources} monthRecords={M.reportSources} />}
+            <tr><td><b>Просрочено сейчас</b></td><td colSpan={2} className="right"><MetricValue className="num" records={{title:'Просрочено сейчас',tasks:overdueTasks}}>{overdue}</MetricValue></td></tr>
             <tr><td><b>Место в рейтинге за месяц</b><div className="small muted">{u.role === 'member' ? 'среди участников округа' : 'среди коллег с той же ролью'}</div></td><td colSpan={2} className="right">{rank ? <b className="num">{rank.place} из {rank.of}</b> : <span className="small muted">недостаточно задач для оценки</span>}</td></tr>
           </tbody>
         </table>

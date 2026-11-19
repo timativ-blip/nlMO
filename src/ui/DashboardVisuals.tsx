@@ -30,12 +30,13 @@ export function ComparisonColumns<T extends TimelinePoint>({ data, onPick }: {
 }
 
 /** A bounded share, with a distinct no-data state instead of a made-up zero. */
-export function SegmentGauge({ value, label }: { value: number | null; label: string }) {
+export function SegmentGauge({ value, label, onPick }: { value: number | null; label: string; onPick?: () => void }) {
   const share = value === null || !Number.isFinite(value) ? null : Math.min(1, Math.max(0, value));
   const point = (angle: number, radius = 77) => [105 + Math.cos(angle) * radius, 92 + Math.sin(angle) * radius];
   const angle = Math.PI + (share ?? 0) * Math.PI;
   const needle = point(angle, 57);
-  return <div className="segment-gauge" role="img" aria-label={share === null ? `${label}: нет данных` : `${label}: ${Math.round(share * 100)}%`}>
+  const Gauge = onPick ? 'button' : 'div';
+  return <Gauge className={`segment-gauge ${onPick ? 'metric-graphic' : ''}`} {...(onPick ? { type: 'button' as const, onClick: onPick, title: 'Открыть исходные записи' } : { role: 'img' })} aria-label={share === null ? `${label}: нет данных` : `${label}: ${Math.round(share * 100)}%`}>
     <svg viewBox="0 0 210 115" aria-hidden>
       {Array.from({ length: 20 }, (_, i) => {
         const segment = Math.PI + (i + .5) * Math.PI / 20;
@@ -46,5 +47,5 @@ export function SegmentGauge({ value, label }: { value: number | null; label: st
     </svg>
     <b>{share === null ? '—' : <AnimatedNumber value={share * 100} suffix="%"/>}</b>
     <small>{share === null ? 'Нет подтверждённых результатов' : label}</small>
-  </div>;
+  </Gauge>;
 }

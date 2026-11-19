@@ -2,11 +2,28 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import {randomUUID} from 'node:crypto';
-import {qualityInsights,enqueueReport,reportOperations,claimReport,settleReport,flushReportQueue,resolveReportConflict,reportOwner,saveOfflineSnapshot,readOfflineSnapshot,clearSavedDraft} from '../.test-team/team-work-entry.js';
+import {qualityInsights,enqueueReport,reportOperations,claimReport,settleReport,flushReportQueue,resolveReportConflict,reportOwner,saveOfflineSnapshot,readOfflineSnapshot,clearSavedDraft,taskShare,dailyCoverage,publicationRecords} from '../.test-team/team-work-entry.js';
 const task=(id,extra={})=>({id,assigneeId:'a',status:'done',confirmedAt:'2026-11-16',comments:[],...extra});
 const ret=(id,at,reason='accuracy')=>({id,at,kind:'return',text:'Исправьте результат',authorId:'b',reworkReason:reason});
 const input=(extra={})=>({kind:'daily',userId:'a',day:'2026-11-16',intent:'save',baseRevision:null,fields:{done:'Сегодня провели встречи',plan:'План',problems:''},...extra});
 const owner=()=>reportOwner('test',randomUUID());
+test('metric drilldown separates the exact numerator from the rest of the denominator',()=>{
+ const all=[task('1'),task('2'),task('3')];const records=taskShare('Выполнение',all,[all[1]],'Доля задач.');
+ assert.deepEqual(records.sections.map(s=>s.tasks.map(t=>t.id)),[['2'],['1','3']]);
+ assert.deepEqual(taskShare('Пусто',[],[],'').sections.map(s=>s.tasks.length),[0,0]);
+});
+test('daily metric drilldown keeps the dates and respects report visibility',()=>{
+ const viewer={id:'c',role:'coordinator',districtId:'118'}, peers=[viewer,{id:'other',role:'coordinator',districtId:'119'}];
+ const saved={id:'r',userId:'c',day:'2026-11-16'};
+ const records=dailyCoverage(viewer,peers,['2026-11-16','2026-11-17'],[saved,{...saved,id:'hidden',userId:'other'}]);
+ assert.deepEqual(records.sections.map(s=>s.items.map(r=>r.id)),[['r'],['c|2026-11-17']]);
+ assert.equal(records.sections[0].items[0].href,'/daily/r');
+});
+test('publication source links only navigate to ordinary web pages',()=>{
+ const post=['2026-11-16','Article','', 'vk',0,1,0,0,0,0,0,0,'https://example.com/post'];
+ const records=publicationRecords('Посты',{people:[['Author','118']]},[post,[...post.slice(0,12),'javascript:void(0)']]);
+ assert.equal(records.items[0].externalHref,'https://example.com/post');assert.equal(records.items[1].externalHref,undefined);
+});
 test('quality uses confirmation cohort, true return events, previous-period repeats and explicit reasons',()=>{
  const q=qualityInsights([task('first'),task('repeat',{comments:[ret('r1','2026-11-14T08:00Z'),ret('r2','2026-11-15T21:30Z')]}),task('legacy',{returnedAt:'2026-11-16T08:00Z'}),task('cancel',{status:'cancelled',comments:[ret('x','2026-11-16T08:00Z')]}),task('future',{confirmedAt:'2026-11-17'})],'2026-11-16','2026-11-16');
  assert.equal(q.confirmed.length,3);assert.equal(q.firstPass.length,1);assert.equal(q.events.length,2);assert.equal(q.repeated.length,1);assert.equal(q.unclassified,1);assert.equal(q.reasons.find(r=>r.id==='accuracy').events.length,1);

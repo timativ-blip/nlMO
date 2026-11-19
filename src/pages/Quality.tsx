@@ -6,6 +6,7 @@ import { useAppState } from '../data/store';
 import { pct } from '../data/calc';
 import { fmtStamp } from '../lib/date';
 import { openRecords, openTask } from '../ui/global';
+import { taskShare } from '../ui/metricSources';
 import { useLookup, useMe, usePeriod } from '../ui/hooks';
 import { Button, Empty, Modal } from '../ui/kit';
 import { useScopeDistrict } from '../ui/widgets';
@@ -18,7 +19,7 @@ export default function QualityPage() {
   const max = Math.max(1, ...q.reasons.map(r=>r.events.length));
   return <div className="quality-page col" style={{gap:20}}>
     <div className="quality-summary grid">
-      <button className="card quality-number" onClick={()=>openRecords({title:'Приняты с первого раза',tasks:q.firstPass,rule:'Подтверждены в выбранном периоде; в истории задачи не зафиксировано возвратов.'})}>
+      <button className="card quality-number" onClick={()=>openRecords(taskShare('Приняты с первого раза',q.confirmed,q.firstPass,'Подтверждены в выбранном периоде; в истории задачи не зафиксировано возвратов.'))}>
         <span className="row"><CheckCheck size={19}/><b>Принято с первого раза</b><ArrowUpRight size={16}/></span>
         <strong>{q.firstPassShare===null?'—':pct(q.firstPassShare)}</strong><small>{q.firstPass.length} из {q.confirmed.length} подтверждённых задач</small>
       </button>
@@ -54,7 +55,7 @@ export default function QualityPage() {
       {q.people.length?<div className="table-wrap"><table className="tbl"><thead><tr><th>Ответственный</th><th className="right">Подтверждено</th><th className="right">С первого раза</th><th className="right">Возвратов</th><th className="right">Повторных задач</th></tr></thead><tbody>{q.people.map(p=><tr key={p.userId}>
         <th scope="row">{L.user(p.userId)?.name??'Ответственный не найден'}</th>
         <td className="right"><button className="quality-link" onClick={()=>openRecords({title:'Подтверждённые задачи',tasks:p.confirmed})}>{p.confirmed.length}</button></td>
-        <td className="right"><button className="quality-link" onClick={()=>openRecords({title:'Без возвратов в истории',tasks:p.firstPass})}>{p.share===null?'—':pct(p.share)}</button></td>
+        <td className="right"><button className="quality-link" onClick={()=>openRecords(taskShare('Без возвратов в истории',p.confirmed,p.firstPass,'Подтверждённые задачи сотрудника.'))}>{p.share===null?'—':pct(p.share)}</button></td>
         <td className="right"><button className="quality-link" onClick={()=>setDetails({title:'Возвраты по задачам сотрудника',events:p.events})}>{p.events.length}</button></td>
         <td className="right"><button className="quality-link" onClick={()=>setDetails({title:'Повторная доработка',events:p.events.filter(e=>e.repeated)})}>{p.repeated.length}</button></td>
       </tr>)}</tbody></table></div>:<div className="card-body"><Empty icon={CheckCheck} title="Пока недостаточно данных" text="Нужны подтверждённые результаты или возвраты за выбранный период."/></div>}

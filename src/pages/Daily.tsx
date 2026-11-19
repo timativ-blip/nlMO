@@ -9,7 +9,9 @@ import * as P from '../data/perm';
 import { useAppState } from '../data/store';
 import { roleLabel, type DailyReport, type User } from '../data/types';
 import { addDays, fmtDayLong, fmtDayMonth, fmtStamp, todayISO, WD_SHORT, weekday } from '../lib/date';
-import { go } from '../lib/router';
+import { go, useRoute } from '../lib/router';
+import { dailyCoverage, MetricValue } from '../ui/metricSources';
+import { openRecords } from '../ui/global';
 import { useLookup, useMe } from '../ui/hooks';
 import { Avatar, Button, Empty, Field, run, Select, Textarea, toast } from '../ui/kit';
 
@@ -19,12 +21,26 @@ export default function DailyPage() {
   const s = useAppState();
   const me = useMe();
   const L = useLookup();
+  const route = useRoute();
   const today = todayISO();
   const canFill = me.role !== 'member';
   const isReviewer = me.role === 'head' || me.role === 'coordinator';
   // кого видно: себя, всех (руководство) или свой округ (координатор и заместитель)
   const required = useMemo(() => s.users.filter((u) => u.active && P.mustReportDaily(u) && P.canSeeDaily(me, u)), [s.users, me]);
   const visible = useMemo(() => s.dailyReports.filter((r) => P.canSeeDaily(me, L.user(r.userId))), [s.dailyReports, me, L]);
+  const detailId = route.parts[1];
+  if (detailId) {
+    const report = visible.find(r => encodeURIComponent(r.id) === detailId || r.id === detailId);
+    return <><Button variant="ghost" onClick={() => go('/daily')}>Все отчёты дня</Button>
+      {report ? <section className="card card-pad col" style={{gap:12}}>
+        <h1>{L.user(report.userId)?.name ?? 'Отчёт дня'}</h1>
+        <p className="muted">{fmtDayLong(report.day)} · сохранён {fmtStamp(report.updatedAt)}</p>
+        <h2>Что сделано</h2><p className="metric-report-text">{report.done}</p>
+        {report.plan && <><h2>План</h2><p className="metric-report-text">{report.plan}</p></>}
+        {report.problems && <><h2>Проблемы</h2><p className="metric-report-text">{report.problems}</p></>}
+      </section> : <Empty icon={ClipboardCheck} title="Отчёт недоступен" text="Запись отсутствует или недоступна вашей роли."/>}
+    </>;
+  }
 
   return (
     <>
@@ -89,6 +105,7 @@ export function DailyReportForm() {
 
 function TodayStatus({ required }: { required: User[] }) {
   const s = useAppState();
+  const me = useMe();
   const L = useLookup();
   const today = todayISO();
   const doneIds = new Set(s.dailyReports.filter((r) => r.day === today).map((r) => r.userId));
@@ -96,11 +113,11 @@ function TodayStatus({ required }: { required: User[] }) {
   const n = required.filter((u) => doneIds.has(u.id)).length;
   return (
     <div className="card">
-      <div className="card-head"><h2 className="grow">Сдали сегодня</h2><span className="num" style={{ fontSize: 22 }}>{n} / {required.length}</span></div>
+      <div className="card-head"><h2 className="grow">Сдали сегодня</h2><MetricValue className="num" records={dailyCoverage(me,required,[today],s.dailyReports)}>{n} / {required.length}</MetricValue></div>
       <div className="card-body" style={{ padding: '6px 0' }}>
         {!isWorkday(today) && <div className="small muted" style={{ padding: '0 20px 8px' }}>Сегодня выходной — отчёт по желанию.</div>}
         {sorted.map((u) => (
-          <button key={u.id} className="list-item" onClick={() => go(`/team/people/${u.id}`)}>
+          <button key={u.id} className="list-item" onClick={() => openRecords(dailyCoverage(me,[u],[today],s.dailyReports))}>
             <Avatar user={u} size={28} />
             <span className="grow"><span className="title ellipsis" style={{ display: 'block' }}>{u.name}</span><span className="small muted ellipsis" style={{ display: 'block' }}>{roleLabel(u)}{u.districtId ? ` · ${L.dname(u.districtId)}` : ''}</span></span>
             {doneIds.has(u.id) ? <span className="badge st-done">сдал(а)</span> : <span className="badge st-overdue">нет</span>}
@@ -146,6 +163,7 @@ function Feed({ reports }: { reports: DailyReport[] }) {
 /** Тепловая карта «человек × рабочий день» за 3 недели: сдал отчёт или нет */
 function DailyHeat({ required }: { required: User[] }) {
   const s = useAppState();
+  const me = useMe();
   const today = todayISO();
   const days = Array.from({ length: 21 }, (_, k) => addDays(today, -20 + k)).filter(isWorkday);
   const has = new Set(s.dailyReports.map((r) => `${r.userId}|${r.day}`));
@@ -161,8 +179,8 @@ function DailyHeat({ required }: { required: User[] }) {
             {rows.map(({ u, n }) => (
               <tr key={u.id}>
                 <td className="hg-name ellipsis">{u.name}</td>
-                {days.map((d) => <td key={d}><span className={`hg-cell ${has.has(`${u.id}|${d}`) ? 'on' : d === today ? 'today' : 'off'}`} title={`${u.name}, ${fmtDayMonth(d)}: ${has.has(`${u.id}|${d}`) ? 'сдан' : 'не сдан'}`} /></td>)}
-                <td className="right num">{Math.round((n / days.length) * 100)}%</td>
+                {days.map((d) => <td key={d}><button type="button" className={`hg-cell ${has.has(`${u.id}|${d}`) ? 'on' : d === today ? 'today' : 'off'}`} title={`${u.name}, ${fmtDayMonth(d)}: ${has.has(`${u.id}|${d}`) ? 'сдан' : 'не сдан'}`} aria-label={`${u.name}, ${fmtDayMonth(d)}`} onClick={() => openRecords(dailyCoverage(me,[u],[d],s.dailyReports))} /></td>)}
+                <td className="right num"><MetricValue records={dailyCoverage(me,[u],days,s.dailyReports)}>{Math.round((n / days.length) * 100)}%</MetricValue></td>
               </tr>
             ))}
           </tbody>

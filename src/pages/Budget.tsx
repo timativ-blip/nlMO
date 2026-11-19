@@ -5,6 +5,9 @@ import { DEMO_MODE } from "../data/store";
 import { fmtDate, todayISO } from "../lib/date";
 import { useLookup, useMe } from "../ui/hooks";
 import { Button, Empty, Modal, toast } from "../ui/kit";
+import { go, useRoute } from "../lib/router";
+import { MetricValue } from "../ui/metricSources";
+import type { SourceRecord } from "../ui/global";
 
 const statuses = { pending: "На проверке", accepted: "Принят", returned: "На доработке" };
 type Edit =
@@ -23,6 +26,7 @@ export default function BudgetPage() {
 function BudgetWorkspace() {
   const me = useMe();
   const lookup = useLookup();
+  const route = useRoute();
   const reviewer = me.role === "head";
   const [data, setData] = useState<Awaited<ReturnType<typeof loadBudget>>>();
   const [loadingError, setLoadingError] = useState("");
@@ -36,6 +40,14 @@ function BudgetWorkspace() {
   const [selected, setSelected] = useState<string[]>([]);
   const attempt = useRef<{ key: string; id: string }>();
   const file = useRef<HTMLInputElement>(null);
+  const targetFund = route.query.get('fund') ?? '';
+  const targetAdvance = route.query.get('advance') ?? '';
+  const targetExpense = route.query.get('expense') ?? '';
+  useEffect(() => {
+    setFundId(targetFund);
+    setAdvanceId(targetAdvance);
+    setSelected([]);
+  }, [targetFund, targetAdvance]);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +70,32 @@ function BudgetWorkspace() {
   const accepted = expenses.filter((item) => item.status === "accepted");
   const pendingAmount = expenses.reduce((sum, row) => sum + (row.status === "pending" ? row.amount_minor : 0), 0);
   const acceptedAmount = accepted.reduce((sum, row) => sum + row.amount_minor, 0);
+  const budgetPath = (fundId: string, advanceId?: string, expenseId?: string) => '/budget?' + new URLSearchParams({
+    fund: fundId, ...(advanceId ? { advance: advanceId } : {}), ...(expenseId ? { expense: expenseId } : {}),
+  });
+  const advanceRecord = (row: Advance): SourceRecord => ({
+    id: row.id, title: row.purpose, detail: `${fmtDate(row.issued_on)} · ${lookup.user(row.recipient_id)?.name ?? 'Сотрудник'}`,
+    value: rubles(row.amount_minor), href: budgetPath(row.fund_id,row.id),
+  });
+  const expenseRecord = (row: Expense): SourceRecord => ({
+    id: row.id, title: row.description, detail: `${fmtDate(row.spent_on)} · ${statuses[row.status]}`,
+    value: rubles(row.amount_minor), href: budgetPath(fund!.id,row.advance_id,row.id),
+  });
+  const fundRecord = (row: BudgetFund): SourceRecord => ({
+    id: row.id, title: row.name, detail: 'Установленный лимит', value: rubles(row.limit_minor), href: budgetPath(row.id),
+  });
+  const fundIssues = advances.map(advanceRecord);
+  const restrictedIssued = (fund?.issued_minor ?? 0) - advances.reduce((sum, row) => sum + row.amount_minor, 0);
+  if (restrictedIssued > 0) fundIssues.push({
+    id:'restricted', title:'Выдачи вне вашей зоны доступа', value:rubles(restrictedIssued),
+    detail:'Входят в общую сумму. Детали доступны руководству.',
+  });
+  useEffect(() => {
+    if (targetExpense && expenses.some(row => row.id === targetExpense)) {
+      const frame = requestAnimationFrame(() => document.getElementById('budget-expense-' + targetExpense)?.scrollIntoView({block:'center'}));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [data, advance?.id, targetExpense]);
   const recipients = [...lookup.users.values()]
     .filter((user) => user.active && !user.pending && user.role !== "member")
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -126,9 +164,9 @@ function BudgetWorkspace() {
       const key = JSON.stringify([edit.kind, body]);
       if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
       await budgetAction(edit.kind, { ...body, requestId: attempt.current.id });
-      if (edit.kind === "issue") setAdvanceId(edit.id);
-      if (edit.kind === "mark_sent") setAdvanceId(edit.request.id);
-      if (edit.kind === "fund_save") setFundId(edit.id);
+      if (edit.kind === "issue") { setAdvanceId(edit.id); go(budgetPath(edit.fund.id, edit.id)); }
+      if (edit.kind === "mark_sent") { setAdvanceId(edit.request.id); go(budgetPath(edit.request.fund_id, edit.request.id)); }
+      if (edit.kind === "fund_save") { setFundId(edit.id); setAdvanceId(""); go(budgetPath(edit.id)); }
       setEdit(null);
       refresh();
       toast("Изменения сохранены");
@@ -159,6 +197,8 @@ function BudgetWorkspace() {
       {!DEMO_MODE && <Button icon={RefreshCw} onClick={refresh}>Обновить</Button>}
       {!DEMO_MODE && reviewer && <Button variant="primary" icon={Plus} onClick={() => openFund()}>Добавить направление</Button>}
     </div>
+    {data && ((targetFund && fund?.id !== targetFund) || (targetAdvance && advance?.id !== targetAdvance) || (targetExpense && !expenses.some(item => item.id === targetExpense))) &&
+      <div className="callout info">Запись по ссылке не найдена или вам недоступна. Ниже — доступный вам бюджет.</div>}
     {loadingError ? <div className="callout danger" role="alert">{loadingError} <Button size="sm" icon={RefreshCw} onClick={refresh}>Повторить</Button></div>
       : !data ? <p role="status">Загружаю бюджет…</p>
       : !fund ? <div className="card"><Empty icon={Banknote} title={DEMO_MODE ? "Бюджет доступен в рабочем кабинете" : "Бюджетов пока нет"} text={DEMO_MODE ? undefined : "Руководство может задать суммы для округов и направлений."} /></div>
@@ -167,16 +207,16 @@ function BudgetWorkspace() {
           <div className="row wrap">
             <label className="field grow">Бюджет
               <select className="select" value={fund.id} onChange={(event) => {
-                setFundId(event.target.value); setAdvanceId(""); setSelected([]);
+                go(budgetPath(event.target.value)); setFundId(event.target.value); setAdvanceId(""); setSelected([]);
               }}>
                 {data.funds.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
           </div>
           <dl className="budget-totals">
-            <div><dt>Выделено</dt><dd>{rubles(fund.limit_minor)}</dd></div>
-            <div><dt>Отправлено</dt><dd>{rubles(fund.issued_minor)}</dd></div>
-            <div><dt>Осталось к выдаче</dt><dd>{rubles(fund.limit_minor - fund.issued_minor)}</dd></div>
+            <div><dt>Выделено</dt><dd><MetricValue records={{title:'Лимит бюджета',items:[fundRecord(fund)]}}>{rubles(fund.limit_minor)}</MetricValue></dd></div>
+            <div><dt>Отправлено</dt><dd><MetricValue records={{title:'Отправленные суммы',rule:'Сумма фактических выдач бюджета.',items:fundIssues}}>{rubles(fund.issued_minor)}</MetricValue></dd></div>
+            <div><dt>Осталось к выдаче</dt><dd><MetricValue records={{title:'Доступно к выдаче',rule:'Лимит бюджета за вычетом отправленных сумм.',sections:[{title:'Лимит',items:[fundRecord(fund)]},{title:'Выдачи',items:fundIssues}]}}>{rubles(fund.limit_minor - fund.issued_minor)}</MetricValue></dd></div>
           </dl>
           <div className="row wrap">
             {canUse(fund, me) && <Button variant="primary" icon={Plus} onClick={() => {
@@ -223,6 +263,7 @@ function BudgetWorkspace() {
           <label className="field">
             Выдача
             <select className="select" value={advance.id} onChange={(event) => {
+              go(budgetPath(fund.id,event.target.value));
               setAdvanceId(event.target.value);
               setSelected([]);
             }}>
@@ -232,11 +273,11 @@ function BudgetWorkspace() {
             </select>
           </label>
           <dl className="budget-totals">
-            <div><dt>Выдано</dt><dd>{rubles(advance.amount_minor)}</dd></div>
-            <div><dt>Принято</dt><dd>{rubles(acceptedAmount)}</dd></div>
-            <div><dt>На проверке</dt><dd>{rubles(pendingAmount)}</dd></div>
+            <div><dt>Выдано</dt><dd><MetricValue records={{title:'Выдача',items:[advanceRecord(advance)]}}>{rubles(advance.amount_minor)}</MetricValue></dd></div>
+            <div><dt>Принято</dt><dd><MetricValue records={{title:'Принятые расходы и чеки',items:accepted.map(expenseRecord)}}>{rubles(acceptedAmount)}</MetricValue></dd></div>
+            <div><dt>На проверке</dt><dd><MetricValue records={{title:'Расходы на проверке',items:expenses.filter(row=>row.status==='pending').map(expenseRecord)}}>{rubles(pendingAmount)}</MetricValue></dd></div>
             <div><dt>{acceptedAmount > advance.amount_minor ? "Перерасход" : "Остаток по принятым чекам"}</dt>
-              <dd>{rubles(Math.abs(advance.amount_minor - acceptedAmount))}</dd></div>
+              <dd><MetricValue records={{title:'Остаток по выдаче',rule:'Выданная сумма минус принятые расходы; отрицательный остаток — перерасход.',sections:[{title:'Выдача',items:[advanceRecord(advance)]},{title:'Принятые расходы',items:accepted.map(expenseRecord)}]}}>{rubles(Math.abs(advance.amount_minor - acceptedAmount))}</MetricValue></dd></div>
           </dl>
         </section>
         <section className="card card-pad col">
@@ -255,7 +296,7 @@ function BudgetWorkspace() {
             Выбрать все принятые расходы для выгрузки
           </label>}
           {!expenses.length && <Empty icon={FileText} title="Чеков пока нет" />}
-          {expenses.map((expense) => <article key={expense.id} className="budget-expense">
+          {expenses.map((expense) => <article key={expense.id} id={'budget-expense-' + expense.id} className={`budget-expense ${expense.id === targetExpense ? 'metric-selected' : ''}`}>
             {reviewer && expense.status === "accepted" && <input type="checkbox" aria-label={`Выбрать расход «${expense.description}»`}
               checked={selected.includes(expense.id)} onChange={(event) => setSelected((items) =>
                 event.target.checked ? [...items, expense.id] : items.filter((id) => id !== expense.id))} />}
