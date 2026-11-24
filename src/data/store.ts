@@ -18,6 +18,7 @@ import { PRIORITY_LABEL, STATUS_LABEL } from './types';
 import type { MediaMatch, TaskSchedule, TaskTemplate, WorkflowLaunch, WorkflowResult } from './workflow-types';
 import { nextOccurrence, validDay, validateWorkflow, workflowTasks } from './workflow';
 import { mediaSourceKey } from './media-matches';
+import { surnameFirst } from '../lib/names';
 
 const KEY = 'kc-mo-demo';
 export const DEMO_MODE = !BACKEND;
@@ -91,7 +92,15 @@ if (!BACKEND)
     }
   });
 
-export const useAppState = () => useSyncExternalStore(subscribe, () => state);
+let presentedSource: State | undefined, presentedState: State;
+function presentationSnapshot() {
+  if (presentedSource !== state) {
+    presentedSource = state;
+    presentedState = { ...state, users: state.users.map(user => ({...user,name:surnameFirst(user.name)})) };
+  }
+  return presentedState;
+}
+export const useAppState = () => useSyncExternalStore(subscribe, presentationSnapshot);
 export const getState = () => state;
 
 /* ───────── Фаза приложения (рабочий режим): загрузка, вход, первый запуск ───────── */

@@ -18,3 +18,4 @@ export { createPushHandler } from '../supabase/functions/web-push/handler';
 export * from '../supabase/functions/_shared/media-policy';
 
 export { pdReminderCandidates } from '../supabase/functions/digest/pd-reminders';
+export { surnameFirst, firstName } from '../src/lib/names';

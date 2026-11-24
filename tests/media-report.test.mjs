@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAuthorRoster, buildSeason, buildTimeline, buildMediaReport, mediaReportText, mediaReportCsv, mediaReportSvg } from '../.test-media/media-entry.js';
+import { buildAuthorRoster, buildSeason, buildTimeline, buildMediaReport, mediaReportText, mediaReportCsv, mediaReportSvg, surnameFirst, firstName } from '../.test-media/media-entry.js';
 const csv = rows => rows.map(row => row.map(v => `"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
 const roster = () => buildAuthorRoster(csv([
  ['118 округ @coord',3,'','Иванов Иван','Не добавлять из заметок'],['','','','Петров Пётр'],['','','','Иванов Иван'],
@@ -8,6 +8,20 @@ const roster = () => buildAuthorRoster(csv([
 ]));
 const headers = ['Дата поста','ФИО','Источник','Очки','URL','Критерии'];
 const season = rows => buildTimeline(roster(), buildSeason(csv([headers,...rows]),roster()));
+test('surname-first display retains spelling, initials and patronymics without changing unknown labels',()=>{
+ for(const [from,to] of [['Вадим Корнюхин','Корнюхин Вадим'],['Владимир Бейтман','Бейтман Владимир'],['Юлия Емелева','Емелева Юлия'],['Марина Першина','Першина Марина'],['Эльдар Галлямов','Галлямов Эльдар'],['И. Антропова','Антропова И.'],['Антропова И.','Антропова И.'],['Иван Петрович Сидоров','Сидоров Иван Петрович'],['Иван Сидоров Петрович','Сидоров Иван Петрович'],['Степайнес Жанна Романовна','Степайнес Жанна Романовна'],['- М.','- М.']]){
+   assert.equal(surnameFirst(from),to);assert.equal(surnameFirst(to),to);
+ }
+ assert.equal(firstName('Першина Марина'),'Марина');assert.equal(firstName('Василевский Тимур'),'Тимур');
+});
+test('display names preserve district blocks, source order, author indices and publication counts in every export',()=>{
+ const source={groups:[{id:'119',num:119,name:'Дмитровский'},{id:'128',num:128,name:'Серпуховский'}],people:[['Вадим Корнюхин','119'],['Антропова Ирина','119'],['Юлия Емелева','119'],['Владимир Бейтман','128']],posts:[['2026-11-01','','','vk',2,1,0,0,0,0,0,0,'https://test/same-person',1,'']],updated:'2026-11-24'};
+ const before=JSON.stringify(source),r=buildMediaReport(source,'2026-11-24');
+ assert.deepEqual(r.rows.map(g=>g.id),['119','128']);
+ assert.deepEqual(r.rows[0].authors.map(a=>[a.index,a.name,a.posts]),[[0,'Корнюхин Вадим',0],[1,'Антропова Ирина',0],[2,'Емелева Юлия',1]]);
+ assert.equal(r.rows[1].authors[0].name,'Бейтман Владимир');assert.equal(r.all.posts,1);assert.equal(r.all.writing,1);assert.equal(JSON.stringify(source),before);
+ assert.match(mediaReportText(r),/Корнюхин Вадим/);assert.match(mediaReportCsv(r),/Емелева Юлия/);
+});
 test('authors tab supplies membership once per district, contact and declared count independently',()=>{
  const d=roster(); assert.equal(d.people.length,5); assert.equal(d.roster.members.length,5); assert.equal(d.roster.declared['118'],3); assert.equal(d.roster.contacts['118'],'@coord'); assert.equal(d.people.some(p=>p[0].includes('заметок')),false);
  assert.throws(()=>buildAuthorRoster('<html>Login</html>'),/Авторы/);

@@ -19,6 +19,7 @@ import { MediaAssignments, MediaMatchForm } from './MediaAssignments';
 import { demoMedia } from '../data/demo-media';
 import { loadMediaTimeline, mediaMonth, mediaMonths, mediaSeasonTitle } from '../data/media-season';
 import { withDeadline } from '../lib/deadline';
+import { surnameFirst } from '../lib/names';
 import type { Channel, GroupRow, GroupsData, PdData, Post, Src } from '../data/media-types';
 export type { GroupsData, PdData, Post } from '../data/media-types';
 
@@ -71,12 +72,12 @@ export function useJson<T>(name: string, everyMs: number) {
   return { data: resolved, error };
 }
 
-interface Person { i: number; name: string; g: string; pts: number; ptsOk: number; ptsBad: number; contrib: number; views: number; likes: number; posts: number; okPosts: number; bad: number; reasons: Map<string, number>; src: Partial<Record<Src, { pts: number; views: number; posts: number }>> }
+interface Person { i: number; name: string; sourceName: string; g: string; pts: number; ptsOk: number; ptsBad: number; contrib: number; views: number; likes: number; posts: number; okPosts: number; bad: number; reasons: Map<string, number>; src: Partial<Record<Src, { pts: number; views: number; posts: number }>> }
 interface Group { id: string; num: number; label: string; roster: number; authors: number; pts: number; posts: number; views: number; mem: Person[] }
 
 export function compute(D: PdData, month: string) {
   const P = D.posts.filter((p) => p[0].startsWith(month));
-  const people: Person[] = D.people.map(([name, g], i) => ({ i, name, g, pts: 0, ptsOk: 0, ptsBad: 0, contrib: 0, views: 0, likes: 0, posts: 0, okPosts: 0, bad: 0, reasons: new Map(), src: {} }));
+  const people: Person[] = D.people.map(([name, g], i) => ({ i, name:surnameFirst(name), sourceName:name, g, pts: 0, ptsOk: 0, ptsBad: 0, contrib: 0, views: 0, likes: 0, posts: 0, okPosts: 0, bad: 0, reasons: new Map(), src: {} }));
   for (const p of P) {
     const a = people[p[4]];
     if (!a) continue;
@@ -339,7 +340,7 @@ function PersonSheet({ A, i, open }: { A: Calc; i: number; open: Opener }) {
   return (
     <>
       <h1 style={{ fontSize: 30 }}>{a.name}</h1>
-      {a.g === 'none' && <MediaMatchForm key={a.name} sourceName={a.name} onSaved={(group) => open('g', group)} />}
+      {a.g === 'none' && <MediaMatchForm key={a.sourceName} sourceName={a.sourceName} onSaved={(group) => open('g', group)} />}
       <div className="row wrap" style={{ marginTop: 10 }}><button className="pill" onClick={() => open('g', a.g, true)}>{A.label(a.g)}</button>{place > 0 && <span className="pill pill-ink">{place} место в области</span>}</div>
       <div className="mstats"><Stat v={fmt(a.pts)} t={a.bad ? 'баллов с невыполненными' : 'баллов'} />{a.bad > 0 && <Stat v={fmt(a.ptsOk)} t="баллов без них" />}<Stat v={fmt(a.posts)} t={posts_(a.posts)} /><Stat v={fmt(a.views)} t="просмотров" /><Stat v={fmt(a.likes)} t="лайков" /></div>
       {a.bad > 0 && <div className="callout danger" style={{ marginBottom: 12 }}><span><b>Не выполнены условия в {a.bad} {posts_(a.bad)} · {fmt(a.ptsBad)} б.</b><br />{[...a.reasons].map(([k, n]) => `${k} — ${n}`).join('; ')}</span></div>}
