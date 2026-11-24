@@ -2,6 +2,7 @@ import type { District, User } from '../data/types';
 import { DEMO_MODE } from '../data/store';
 import type { useDistrictDirectory } from '../data/district-directory';
 import { resolveCoordinator } from '../../supabase/functions/_shared/district-directory';
+import { surnameFirst } from '../lib/names';
 
 export function DistrictCoordinator({ district, registered, directory, detailed = false }: { district: District; registered?: User; directory: ReturnType<typeof useDistrictDirectory>; detailed?: boolean }) {
   const entry = directory.data?.districts.find(item => item.id === district.id);
@@ -12,7 +13,7 @@ export function DistrictCoordinator({ district, registered, directory, detailed 
     : directory.loading ? 'проверяю таблицу…'
     : result.source === 'sheet' ? 'по актуальной таблице' : 'данные из карточки округа';
   return <span title={description || undefined}>
-    {registered && detailed ? <a href={`#/team/people/${registered.id}`}>{result.name}</a> : result.name || (result.source === 'conflict' ? 'требует уточнения' : 'не назначен')}
+    {registered && detailed ? <a href={`#/team/people/${registered.id}`}>{surnameFirst(result.name ?? '')}</a> : surnameFirst(result.name ?? '') || (result.source === 'conflict' ? 'требует уточнения' : 'не назначен')}
     {detailed && description && <> <span className="muted">({description})</span></>}
   </span>;
 }

@@ -1,6 +1,7 @@
 import type { PdData } from './media-types';
 import { SEASON_11 } from './media-season';
 import { addDays, fmtDate, plural } from '../lib/date';
+import { surnameFirst } from '../lib/names';
 
 export interface ReportAuthor { index: number; name: string; group: string; registered: boolean; posts: number; counted: number }
 export interface ReportRow { id: string; label: string; contact: string; registered: number; ranked: number; writing: number; posts: number; counted: number; writingDelta: number; postsDelta: number; authors: ReportAuthor[]; declared?: number }
@@ -17,7 +18,7 @@ export function buildMediaReport(data: PdData, to: string, compareTo = reportWee
   to = reportDate(to);
   if (compareTo >= to) throw new Error('Дата сравнения должна быть раньше даты отчёта.');
   const members = new Set(data.roster?.members ?? data.people.flatMap(([, group], i) => group === 'none' ? [] : [i]));
-  const authors: ReportAuthor[] = data.people.map(([name, group], index) => ({ name, group, index, registered: members.has(index), posts: 0, counted: 0 }));
+  const authors: ReportAuthor[] = data.people.map(([name, group], index) => ({ name:surnameFirst(name), group, index, registered: members.has(index), posts: 0, counted: 0 }));
   const previous = data.people.map(() => ({ posts: 0, counted: 0 }));
   for (const p of data.posts) {
     if (p[0] < SEASON_11.from || p[0] > to || p[0] > SEASON_11.to || !authors[p[4]]) continue;

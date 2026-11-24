@@ -5,6 +5,7 @@ import { canSeeDaily } from '../data/perm';
 import type { DailyReport, Task, User } from '../data/types';
 import type { PdData, Post } from '../data/media-types';
 import { fmtDate } from '../lib/date';
+import { surnameFirst } from '../lib/names';
 import { openRecords, type RecordsSpec, type RecordSection, type SourceRecord } from './global';
 
 export function MetricValue({ children, records, className = '', label }: {
@@ -77,7 +78,7 @@ function safeLink(value: string | undefined) {
 
 export function publicationRecords(title: string, data: PdData, posts: Post[], value?: (post: Post) => string): RecordsSpec {
   return {title, rule:'Публикации из той же выгрузки и того же периода, что и показатель.',items:posts.map((post,index)=>({
-    id:String(index), title:post[1] || post[2] || 'Публикация', detail:`${data.people[post[4]]?.[0] ?? 'Автор'} · ${fmtDate(post[0])}`,
+    id:String(index), title:post[1] || post[2] || 'Публикация', detail:`${surnameFirst(data.people[post[4]]?.[0] ?? 'Автор')} · ${fmtDate(post[0])}`,
     value:value?.(post), externalHref:safeLink(post[12]),
   }))};
 }
